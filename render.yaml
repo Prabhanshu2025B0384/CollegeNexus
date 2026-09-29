@@ -27,3 +27,7 @@ services:
         value: admin@gmail.com
       - key: SEED_SAMPLE_DATA
         value: "false"
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: SDMS

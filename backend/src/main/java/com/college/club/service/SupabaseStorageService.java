@@ -20,18 +20,31 @@ public class SupabaseStorageService {
     private static final Logger logger = LoggerFactory.getLogger(SupabaseStorageService.class);
     private static final long MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB limit
 
-    @Value("${SUPABASE_URL:#{null}}")
+    @Value("${app.supabase.url:${SUPABASE_URL:#{null}}}")
     private String supabaseUrl;
 
-    @Value("${SUPABASE_SERVICE_KEY:#{null}}")
+    @Value("${app.supabase.service-key:${SUPABASE_SERVICE_KEY:${SUPABASE_SERVICE_ROLE_KEY:${SUPABASE_SECRET_KEY:#{null}}}}}")
     private String supabaseServiceKey;
 
-    @Value("${SUPABASE_STORAGE_BUCKET:SDMS}")
+    @Value("${app.supabase.storage-bucket:${SUPABASE_STORAGE_BUCKET:SDMS}}")
     private String storageBucket;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .build();
+    private final HttpClient httpClient;
+
+    public SupabaseStorageService() {
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(15))
+                .build();
+    }
+
+    public SupabaseStorageService(String supabaseUrl, String supabaseServiceKey, String storageBucket) {
+        this.supabaseUrl = supabaseUrl;
+        this.supabaseServiceKey = supabaseServiceKey;
+        this.storageBucket = storageBucket;
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(15))
+                .build();
+    }
 
     public boolean isConfigured() {
         return supabaseUrl != null && !supabaseUrl.trim().isEmpty() &&
@@ -50,7 +63,7 @@ public class SupabaseStorageService {
 
     public String uploadImage(MultipartFile file) {
         if (!isConfigured()) {
-            throw new IllegalStateException("Supabase Storage is not configured. Please set SUPABASE_URL and SUPABASE_SERVICE_KEY.");
+            throw new IllegalStateException("Supabase Storage is not configured. Please set SUPABASE_SERVICE_KEY (or SUPABASE_SERVICE_ROLE_KEY).");
         }
 
         if (file == null || file.isEmpty()) {
@@ -71,20 +84,30 @@ public class SupabaseStorageService {
         // Validate image signature / magic bytes (Strict: JPEG, PNG, WebP only)
         ValidatedImage validatedImage = detectAndValidateImageFormat(fileBytes);
 
-        String cleanBucket = storageBucket != null ? storageBucket.trim() : "SDMS";
-        String cleanBaseUrl = supabaseUrl.endsWith("/") ? supabaseUrl.substring(0, supabaseUrl.length() - 1) : supabaseUrl;
-        
+        String cleanBucket = (storageBucket != null && !storageBucket.trim().isEmpty()) ? storageBucket.trim() : "SDMS";
+        String cleanBaseUrl = supabaseUrl.trim().replaceAll("/+$", "");
+        String cleanKey = supabaseServiceKey.trim().replaceAll("^[\"']|[\"']$", "");
+        String authHeader = cleanKey.startsWith("Bearer ") ? cleanKey : "Bearer " + cleanKey;
+        String rawKey = cleanKey.startsWith("Bearer ") ? cleanKey.substring(7).trim() : cleanKey;
+
+        if (rawKey.startsWith("sb_secret_")) {
+            logger.warn("SUPABASE_CONFIG_WARNING: Configured Supabase key begins with 'sb_secret_'. The Supabase Storage REST API requires the JWT 'service_role' key (starting with 'eyJ...') from Supabase Settings -> API.");
+        }
+
         // Random UUID filename with server-verified extension (prevents path traversal and extension spoofing)
         String objectPath = "events/" + UUID.randomUUID() + "." + validatedImage.extension;
 
         String uploadUrl = cleanBaseUrl + "/storage/v1/object/" + cleanBucket + "/" + objectPath;
         String publicUrl = cleanBaseUrl + "/storage/v1/object/public/" + cleanBucket + "/" + objectPath;
 
+        logger.info("STORAGE_UPLOAD_START: bucket={} objectPath={} contentType={} size={}",
+                cleanBucket, objectPath, validatedImage.mimeType, fileBytes.length);
+
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(uploadUrl))
-                    .header("Authorization", "Bearer " + supabaseServiceKey.trim())
-                    .header("apikey", supabaseServiceKey.trim())
+                    .header("Authorization", authHeader)
+                    .header("apikey", rawKey)
                     .header("Content-Type", validatedImage.mimeType)
                     .header("x-upsert", "true")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(fileBytes))
@@ -94,11 +117,28 @@ public class SupabaseStorageService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                logger.info("SECURITY_AUDIT: IMAGE_UPLOADED path={} format={}", objectPath, validatedImage.extension);
+                logger.info("SECURITY_AUDIT: IMAGE_UPLOADED bucket={} path={} format={} size={}",
+                        cleanBucket, objectPath, validatedImage.extension, fileBytes.length);
                 return publicUrl;
             } else {
-                logger.error("Supabase Storage upload failed with HTTP status {}", response.statusCode());
-                throw new IllegalStateException("Failed to upload image to storage service.");
+                String rawBody = response.body() != null ? response.body().replaceAll("[\r\n]", " ").trim() : "";
+                String safeBody = rawBody.length() > 300 ? rawBody.substring(0, 300) + "..." : rawBody;
+                logger.error("Supabase Storage upload failed: HTTP {} - bucket={} path={} contentType={} size={} - response={}",
+                        response.statusCode(), cleanBucket, objectPath, validatedImage.mimeType, fileBytes.length, safeBody);
+
+                String detailMessage = "Failed to upload image to storage service.";
+                if (response.statusCode() == 401 || response.statusCode() == 403) {
+                    if (rawKey.startsWith("sb_secret_") || safeBody.contains("Invalid Compact JWS")) {
+                        detailMessage = "Supabase Storage authentication failed (HTTP " + response.statusCode() + "): The configured key is in 'sb_secret_' format. Supabase Storage requires the JWT 'service_role' secret key (starting with 'eyJ...') from Supabase Settings -> API.";
+                    } else if (safeBody.contains("Unregistered API key")) {
+                        detailMessage = "Supabase Storage authentication failed (HTTP " + response.statusCode() + "): The configured SUPABASE_SERVICE_KEY is not registered for this Supabase project.";
+                    } else {
+                        detailMessage = "Supabase Storage access denied (HTTP " + response.statusCode() + "): " + (safeBody.isEmpty() ? "Check storage bucket permissions and service_role key." : safeBody);
+                    }
+                } else if (response.statusCode() == 404) {
+                    detailMessage = "Supabase Storage bucket '" + cleanBucket + "' was not found (HTTP 404). Please ensure the bucket exists in Supabase.";
+                }
+                throw new IllegalStateException(detailMessage);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

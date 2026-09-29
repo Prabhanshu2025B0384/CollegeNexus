@@ -101,4 +101,45 @@ class SupabaseStorageServiceTest {
         MockMultipartFile file = new MockMultipartFile("file", "tiny.jpg", "image/jpeg", smallBytes);
         assertThrows(IllegalArgumentException.class, () -> storageService.uploadImage(file));
     }
+
+    @Test
+    @DisplayName("Parameterized constructor initializes all fields and isConfigured is true")
+    void testParameterizedConstructor() {
+        SupabaseStorageService customService = new SupabaseStorageService("https://project.supabase.co", "test-key", "test-bucket");
+        assertTrue(customService.isConfigured());
+    }
+
+    @Test
+    @DisplayName("Should detect and allow valid JPEG magic bytes")
+    void testValidJpegDetection() {
+        storageService = new SupabaseStorageService("https://mock.supabase.co", "test-key", "SDMS");
+        // Valid JPEG header: FF D8 FF E0 00 10 4A 46 49 46 00 01
+        byte[] jpegBytes = new byte[]{ (byte)0xFF, (byte)0xD8, (byte)0xFF, (byte)0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01 };
+        MockMultipartFile file = new MockMultipartFile("file", "photo.jpg", "image/jpeg", jpegBytes);
+        // Will attempt HTTP request to mock url and fail with network/mock error, but pass validation
+        Exception ex = assertThrows(IllegalStateException.class, () -> storageService.uploadImage(file));
+        assertFalse(ex.getMessage().contains("Invalid file"));
+    }
+
+    @Test
+    @DisplayName("Should detect and allow valid PNG magic bytes")
+    void testValidPngDetection() {
+        storageService = new SupabaseStorageService("https://mock.supabase.co", "test-key", "SDMS");
+        // Valid PNG header: 89 50 4E 47 0D 0A 1A 0A 00 00 00 0D
+        byte[] pngBytes = new byte[]{ (byte)0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D };
+        MockMultipartFile file = new MockMultipartFile("file", "photo.png", "image/png", pngBytes);
+        Exception ex = assertThrows(IllegalStateException.class, () -> storageService.uploadImage(file));
+        assertFalse(ex.getMessage().contains("Invalid file"));
+    }
+
+    @Test
+    @DisplayName("Should detect and allow valid WebP magic bytes")
+    void testValidWebpDetection() {
+        storageService = new SupabaseStorageService("https://mock.supabase.co", "test-key", "SDMS");
+        // Valid WebP header: 'RIFF' + 4 bytes size + 'WEBP'
+        byte[] webpBytes = new byte[]{ 'R', 'I', 'F', 'F', 0x20, 0x00, 0x00, 0x00, 'W', 'E', 'B', 'P' };
+        MockMultipartFile file = new MockMultipartFile("file", "photo.webp", "image/webp", webpBytes);
+        Exception ex = assertThrows(IllegalStateException.class, () -> storageService.uploadImage(file));
+        assertFalse(ex.getMessage().contains("Invalid file"));
+    }
 }
