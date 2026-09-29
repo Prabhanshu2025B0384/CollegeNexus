@@ -40,6 +40,14 @@ public class DatabaseConfig {
                     ? System.getenv("DATABASE_URL").trim()
                     : null;
 
+        if (effectiveUrl != null) {
+            effectiveUrl = effectiveUrl.trim();
+            if ((effectiveUrl.startsWith("\"") && effectiveUrl.endsWith("\"")) ||
+                (effectiveUrl.startsWith("'") && effectiveUrl.endsWith("'"))) {
+                effectiveUrl = effectiveUrl.substring(1, effectiveUrl.length() - 1).trim();
+            }
+        }
+
         if (effectiveUrl != null && (effectiveUrl.startsWith("postgresql://") || effectiveUrl.startsWith("postgres://"))) {
             parseAndConfigureDatabaseUrl(effectiveUrl, config);
         } else {

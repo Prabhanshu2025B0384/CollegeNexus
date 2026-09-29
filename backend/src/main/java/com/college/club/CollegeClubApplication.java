@@ -80,6 +80,10 @@ public class CollegeClubApplication {
 
         if (databaseUrl != null && !databaseUrl.trim().isEmpty()) {
             String rawUrl = databaseUrl.trim();
+            if ((rawUrl.startsWith("\"") && rawUrl.endsWith("\"")) ||
+                (rawUrl.startsWith("'") && rawUrl.endsWith("'"))) {
+                rawUrl = rawUrl.substring(1, rawUrl.length() - 1).trim();
+            }
             String withoutScheme = null;
             if (rawUrl.startsWith("postgresql://")) {
                 withoutScheme = rawUrl.substring("postgresql://".length());
