@@ -19,6 +19,7 @@ public class CollegeClubApplication {
     private static final Logger logger = LoggerFactory.getLogger(CollegeClubApplication.class);
 
     public static void main(String[] args) {
+        System.setProperty("java.net.preferIPv4Stack", "true");
         loadDotenv();
         configureDatabaseUrl();
         SpringApplication.run(CollegeClubApplication.class, args);
@@ -79,48 +80,88 @@ public class CollegeClubApplication {
 
         if (databaseUrl != null && !databaseUrl.trim().isEmpty()) {
             String rawUrl = databaseUrl.trim();
-            if (rawUrl.startsWith("postgres://")) {
-                rawUrl = "postgresql://" + rawUrl.substring("postgres://".length());
+            String withoutScheme = null;
+            if (rawUrl.startsWith("postgresql://")) {
+                withoutScheme = rawUrl.substring("postgresql://".length());
+            } else if (rawUrl.startsWith("postgres://")) {
+                withoutScheme = rawUrl.substring("postgres://".length());
             }
 
-            if (rawUrl.startsWith("postgresql://")) {
+            if (withoutScheme != null) {
                 try {
-                    URI uri = new URI(rawUrl);
-                    String userInfo = uri.getUserInfo();
-                    String username = "";
-                    String password = "";
-                    if (userInfo != null && userInfo.contains(":")) {
-                        String[] parts = userInfo.split(":", 2);
-                        username = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
-                        password = URLDecoder.decode(parts[1], StandardCharsets.UTF_8);
-                    }
+                    int atIndex = withoutScheme.lastIndexOf('@');
+                    if (atIndex > 0 && atIndex < withoutScheme.length() - 1) {
+                        String credentials = withoutScheme.substring(0, atIndex);
+                        String hostPortDbQuery = withoutScheme.substring(atIndex + 1);
 
-                    String host = uri.getHost();
-                    int port = uri.getPort() > 0 ? uri.getPort() : 5432;
-                    String path = uri.getPath();
-                    String query = uri.getQuery();
+                        int colonIndex = credentials.indexOf(':');
+                        String username = colonIndex > 0 ? credentials.substring(0, colonIndex) : credentials;
+                        String password = colonIndex > 0 ? credentials.substring(colonIndex + 1) : "";
 
-                    String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + path;
-                    boolean isLocal = host != null && (host.equalsIgnoreCase("localhost") || host.equals("127.0.0.1") || host.equals("::1"));
-                    if (query != null && !query.isEmpty()) {
-                        jdbcUrl += "?" + query;
-                        if (!query.contains("sslmode") && !isLocal) {
-                            jdbcUrl += "&sslmode=require";
+                        String hostPortDb;
+                        String query = "";
+                        int questionIndex = hostPortDbQuery.indexOf('?');
+                        if (questionIndex >= 0) {
+                            hostPortDb = hostPortDbQuery.substring(0, questionIndex);
+                            query = hostPortDbQuery.substring(questionIndex + 1);
+                        } else {
+                            hostPortDb = hostPortDbQuery;
                         }
-                    } else if (!isLocal) {
-                        jdbcUrl += "?sslmode=require";
+
+                        String hostPort;
+                        String database = "postgres";
+                        int slashIndex = hostPortDb.indexOf('/');
+                        if (slashIndex >= 0) {
+                            hostPort = hostPortDb.substring(0, slashIndex);
+                            String db = hostPortDb.substring(slashIndex + 1).trim();
+                            if (!db.isEmpty()) {
+                                database = db;
+                            }
+                        } else {
+                            hostPort = hostPortDb;
+                        }
+
+                        String host;
+                        int port = 5432;
+                        int hostColonIndex = hostPort.lastIndexOf(':');
+                        if (hostColonIndex >= 0) {
+                            host = hostPort.substring(0, hostColonIndex);
+                            try {
+                                port = Integer.parseInt(hostPort.substring(hostColonIndex + 1));
+                            } catch (NumberFormatException e) {
+                                port = 5432;
+                            }
+                        } else {
+                            host = hostPort;
+                        }
+
+                        StringBuilder jdbcUrl = new StringBuilder();
+                        jdbcUrl.append("jdbc:postgresql://").append(host).append(":").append(port).append("/").append(database);
+
+                        boolean isLocal = "localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host);
+                        if (query.isEmpty()) {
+                            if (!isLocal) {
+                                jdbcUrl.append("?sslmode=require");
+                            }
+                        } else {
+                            jdbcUrl.append("?").append(query);
+                            if (!query.contains("sslmode=") && !isLocal) {
+                                jdbcUrl.append("&sslmode=require");
+                            }
+                        }
+
+                        String finalJdbcUrl = jdbcUrl.toString();
+                        System.setProperty("spring.datasource.url", finalJdbcUrl);
+                        System.setProperty("spring.datasource.username", username);
+                        System.setProperty("spring.datasource.password", password);
+                        System.setProperty("DB_URL", finalJdbcUrl);
+                        System.setProperty("DB_USERNAME", username);
+                        System.setProperty("DB_PASSWORD", password);
+                        logger.info("Configured JDBC DataSource properties from DATABASE_URL for host: {}", host);
+
+                        // Derive SUPABASE_URL if host or username contains Supabase project reference
+                        deriveSupabaseUrlIfOmitted(host, username);
                     }
-
-                    System.setProperty("spring.datasource.url", jdbcUrl);
-                    System.setProperty("spring.datasource.username", username);
-                    System.setProperty("spring.datasource.password", password);
-                    System.setProperty("DB_URL", jdbcUrl);
-                    System.setProperty("DB_USERNAME", username);
-                    System.setProperty("DB_PASSWORD", password);
-                    logger.info("Configured JDBC DataSource from DATABASE_URL for host: {}", host);
-
-                    // Derive SUPABASE_URL if host or username contains Supabase project reference
-                    deriveSupabaseUrlIfOmitted(host, username);
                 } catch (Exception ex) {
                     logger.error("Failed to parse DATABASE_URL: {}", ex.getMessage());
                 }

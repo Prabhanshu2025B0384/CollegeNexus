@@ -43,4 +43,5 @@ EXPOSE 8080
 # - UseContainerSupport: respects cgroup CPU & memory quotas in cloud containers
 # - MaxRAMPercentage: restricts heap allocation to 75% of container RAM (prevents OOM on 512MB free tier)
 # - java.security.egd: non-blocking entropy source for fast SSL/JWT initialization
-ENTRYPOINT ["sh", "-c", "java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom -jar app.jar"]
+# - java.net.preferIPv4Stack: ensures outbound socket connections use IPv4 (required for Supabase pooler)
+ENTRYPOINT ["sh", "-c", "java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true -jar app.jar"]
