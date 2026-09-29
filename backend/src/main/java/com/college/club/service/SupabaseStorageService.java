@@ -23,8 +23,10 @@ public class SupabaseStorageService {
     @Value("${app.supabase.url:${SUPABASE_URL:#{null}}}")
     private String supabaseUrl;
 
-    @Value("${app.supabase.service-key:${SUPABASE_SERVICE_KEY:${SUPABASE_SERVICE_ROLE_KEY:${SUPABASE_SECRET_KEY:#{null}}}}}")
-    private String supabaseServiceKey;
+    @Value("${app.supabase.secret-key:${SUPABASE_SECRET_KEY:${app.supabase.service-key:${SUPABASE_SERVICE_KEY:#{null}}}}}")
+    private String supabaseSecretKey;
+
+    private String supabaseServiceKey; // Kept for backwards compatibility and test reflection
 
     @Value("${app.supabase.storage-bucket:${SUPABASE_STORAGE_BUCKET:SDMS}}")
     private String storageBucket;
@@ -37,18 +39,30 @@ public class SupabaseStorageService {
                 .build();
     }
 
-    public SupabaseStorageService(String supabaseUrl, String supabaseServiceKey, String storageBucket) {
+    public SupabaseStorageService(String supabaseUrl, String supabaseSecretKey, String storageBucket) {
         this.supabaseUrl = supabaseUrl;
-        this.supabaseServiceKey = supabaseServiceKey;
+        this.supabaseSecretKey = supabaseSecretKey;
+        this.supabaseServiceKey = supabaseSecretKey;
         this.storageBucket = storageBucket;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .build();
     }
 
+    private String getEffectiveKey() {
+        if (supabaseSecretKey != null && !supabaseSecretKey.trim().isEmpty()) {
+            return supabaseSecretKey.trim();
+        }
+        if (supabaseServiceKey != null && !supabaseServiceKey.trim().isEmpty()) {
+            return supabaseServiceKey.trim();
+        }
+        return null;
+    }
+
     public boolean isConfigured() {
+        String key = getEffectiveKey();
         return supabaseUrl != null && !supabaseUrl.trim().isEmpty() &&
-               supabaseServiceKey != null && !supabaseServiceKey.trim().isEmpty();
+               key != null && !key.isEmpty();
     }
 
     private static class ValidatedImage {
@@ -63,7 +77,7 @@ public class SupabaseStorageService {
 
     public String uploadImage(MultipartFile file) {
         if (!isConfigured()) {
-            throw new IllegalStateException("Supabase Storage is not configured. Please set SUPABASE_SERVICE_KEY (or SUPABASE_SERVICE_ROLE_KEY).");
+            throw new IllegalStateException("Supabase Storage is not configured. Please set SUPABASE_SECRET_KEY in backend/.env.");
         }
 
         if (file == null || file.isEmpty()) {
@@ -86,12 +100,12 @@ public class SupabaseStorageService {
 
         String cleanBucket = (storageBucket != null && !storageBucket.trim().isEmpty()) ? storageBucket.trim() : "SDMS";
         String cleanBaseUrl = supabaseUrl.trim().replaceAll("/+$", "");
-        String cleanKey = supabaseServiceKey.trim().replaceAll("^[\"']|[\"']$", "");
+        String cleanKey = getEffectiveKey().replaceAll("^[\"']|[\"']$", "");
         String rawKey = cleanKey.startsWith("Bearer ") ? cleanKey.substring(7).trim() : cleanKey;
         boolean isJwt = isJwtToken(rawKey);
 
         if (!isJwt) {
-            logger.warn("SUPABASE_KEY_FORMAT: Configured key does not appear to be a JWT. Sending 'apikey' header and omitting 'Authorization: Bearer' to avoid Compact JWS validation failure.");
+            logger.info("SUPABASE_KEY_FORMAT: Configured key is a modern Supabase secret key (sb_secret_...). Using standard apikey header authentication.");
         }
 
         // Random UUID filename with server-verified extension (prevents path traversal and extension spoofing)
@@ -117,8 +131,22 @@ public class SupabaseStorageService {
             }
 
             HttpRequest request = requestBuilder.build();
-
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            // If Supabase Storage gateway insists on Authorization header for non-JWT keys, retry with Authorization
+            if (response.statusCode() == 400 && !isJwt && response.body() != null && response.body().contains("headers must have required property 'authorization'")) {
+                logger.info("Storage API requires authorization header; retrying with Authorization header for gateway compatibility");
+                HttpRequest retryRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(uploadUrl))
+                        .header("apikey", rawKey)
+                        .header("Authorization", "Bearer " + rawKey)
+                        .header("Content-Type", validatedImage.mimeType)
+                        .header("x-upsert", "true")
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(fileBytes))
+                        .timeout(Duration.ofSeconds(30))
+                        .build();
+                response = httpClient.send(retryRequest, HttpResponse.BodyHandlers.ofString());
+            }
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 logger.info("SECURITY_AUDIT: IMAGE_UPLOADED bucket={} path={} format={} size={}",
@@ -131,18 +159,16 @@ public class SupabaseStorageService {
                         response.statusCode(), cleanBucket, objectPath, validatedImage.mimeType, fileBytes.length, safeBody);
 
                 String detailMessage = "Failed to upload image to storage service.";
-                if (response.statusCode() == 400 && safeBody.contains("headers must have required property 'authorization'")) {
-                    detailMessage = "Supabase Storage rejected upload (HTTP 400): The Supabase Storage REST API requires a valid JWT 'service_role' key in the Authorization header. Opaque 'sb_secret_' keys are not accepted by the Storage REST endpoint without a companion JWT.";
-                } else if (response.statusCode() == 401 || response.statusCode() == 403) {
-                    if (safeBody.contains("Invalid Compact JWS")) {
-                        detailMessage = "Supabase Storage authentication failed (HTTP " + response.statusCode() + "): Invalid Compact JWS. The configured key is not a valid JWT.";
-                    } else if (safeBody.contains("Unregistered API key")) {
-                        detailMessage = "Supabase Storage authentication failed (HTTP " + response.statusCode() + "): The configured SUPABASE_SERVICE_KEY is not registered for this Supabase project.";
-                    } else {
-                        detailMessage = "Supabase Storage access denied (HTTP " + response.statusCode() + "): " + (safeBody.isEmpty() ? "Check storage bucket permissions and service_role key." : safeBody);
-                    }
+                if (safeBody.contains("Invalid Compact JWS")) {
+                    detailMessage = "Supabase Storage authentication failed: Invalid Compact JWS. The configured SUPABASE_SECRET_KEY was not accepted for this project (" + cleanBaseUrl + "). Please verify that the Secret Key in Supabase Dashboard (Settings -> API Keys) matches this project.";
+                } else if (safeBody.contains("Unregistered API key")) {
+                    detailMessage = "Supabase Storage authentication failed: The configured SUPABASE_SECRET_KEY is not registered for this Supabase project.";
+                } else if (response.statusCode() == 400 && safeBody.contains("headers must have required property 'authorization'")) {
+                    detailMessage = "Supabase Storage rejected upload (HTTP 400): Storage API authorization failed. Please verify SUPABASE_SECRET_KEY in backend/.env.";
                 } else if (response.statusCode() == 404) {
                     detailMessage = "Supabase Storage bucket '" + cleanBucket + "' was not found (HTTP 404). Please ensure the bucket exists in Supabase.";
+                } else if (!safeBody.isEmpty()) {
+                    detailMessage = "Supabase Storage upload failed: " + safeBody;
                 }
                 throw new IllegalStateException(detailMessage);
             }

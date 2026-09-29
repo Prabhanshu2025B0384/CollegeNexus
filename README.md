@@ -216,7 +216,7 @@ The frontend requires only **one public variable**. Sensitive credentials must n
 | `ADMIN_PASSWORD` | Password for seeding initial admin user | **Yes** | Secure password | **YES** |
 | `ADMIN_USERNAME` | Username for admin login (default: `admin@gmail.com`) | No | `admin@gmail.com` | **NO** |
 | `ADMIN_EMAIL` | Admin contact email (default: `admin@collegeclub.edu`) | No | `admin@collegeclub.edu` | **NO** |
-| `SUPABASE_SERVICE_KEY` | Supabase `service_role` key (required only for banner image upload) | Conditional | Secret key from Supabase Settings → API | **YES** |
+| `SUPABASE_SECRET_KEY` | Supabase Secret Key (required only for banner image upload) | Conditional | Secret key from Supabase Settings → API Keys | **YES** |
 | `SUPABASE_STORAGE_BUCKET`| Supabase bucket name (default: `SDMS`) | No | `SDMS` | **NO** |
 | `SEED_SAMPLE_DATA` | Enable demo event seeding on empty DB (default: `false`) | No | `false` in production, `true` for demo | **NO** |
 | `PORT` | Web server port (injected automatically by Render) | Auto | `8080` | **NO** |
@@ -242,7 +242,7 @@ Campus Nexus supports custom banner image uploads for events via Supabase Storag
 
 1. **Bucket:** Configured in `app.supabase.storage-bucket` (default: `SDMS`). Must be marked **Public** in Supabase so uploaded images can be served globally via CDN.
 2. **Strict Content Validation:** The backend inspects true file magic bytes (JPEG, PNG, WebP) and rejects disguised HTML, SVGs with embedded scripts, executable binaries, and files larger than 5MB.
-3. **Optional Feature:** If `SUPABASE_SERVICE_KEY` is not provided, administrators can still assign event banners by entering any external image URL (e.g., Unsplash, Cloudinary, Imgur).
+3. **Optional Feature:** If `SUPABASE_SECRET_KEY` is not provided, administrators can still assign event banners by entering any external image URL (e.g., Unsplash, Cloudinary, Imgur).
 
 ---
 

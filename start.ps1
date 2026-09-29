@@ -77,21 +77,36 @@ if (-not (Test-Path $backendEnv)) {
 }
 
 # Verify required Supabase and Security variables exist in backend/.env without exposing values
-$requiredKeys = @("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "SUPABASE_STORAGE_BUCKET", "DATABASE_URL", "JWT_SECRET")
+$requiredKeys = @("SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_STORAGE_BUCKET", "DATABASE_URL", "JWT_SECRET")
 $envContent = Get-Content $backendEnv -Encoding UTF8
 $foundKeys = @{}
 
 foreach ($line in $envContent) {
     $trimmed = $line.Trim()
     if ($trimmed -and -not $trimmed.StartsWith("#") -and $trimmed.Contains("=")) {
-        $key = $trimmed.Split("=")[0].Trim()
-        $foundKeys[$key] = $true
+        $parts = $trimmed.Split("=", 2)
+        $key = $parts[0].Trim()
+        $val = $parts[1].Trim().Trim('"', "'")
+        $foundKeys[$key] = $val
+        # Export each variable to current process environment so child processes inherit it
+        [Environment]::SetEnvironmentVariable($key, $val, "Process")
     }
+}
+
+# If legacy SUPABASE_SERVICE_KEY was provided instead of SUPABASE_SECRET_KEY, map it
+if (-not $foundKeys.ContainsKey("SUPABASE_SECRET_KEY") -and $foundKeys.ContainsKey("SUPABASE_SERVICE_KEY")) {
+    $foundKeys["SUPABASE_SECRET_KEY"] = $foundKeys["SUPABASE_SERVICE_KEY"]
+    [Environment]::SetEnvironmentVariable("SUPABASE_SECRET_KEY", $foundKeys["SUPABASE_SERVICE_KEY"], "Process")
+}
+
+# Ensure SUPABASE_SERVICE_KEY alias is also populated in process environment for any legacy consumers
+if ($foundKeys.ContainsKey("SUPABASE_SECRET_KEY") -and -not $foundKeys.ContainsKey("SUPABASE_SERVICE_KEY")) {
+    [Environment]::SetEnvironmentVariable("SUPABASE_SERVICE_KEY", $foundKeys["SUPABASE_SECRET_KEY"], "Process")
 }
 
 $missingKeys = @()
 foreach ($req in $requiredKeys) {
-    if (-not $foundKeys.ContainsKey($req)) {
+    if (-not $foundKeys.ContainsKey($req) -or [string]::IsNullOrWhiteSpace($foundKeys[$req])) {
         $missingKeys += $req
     }
 }

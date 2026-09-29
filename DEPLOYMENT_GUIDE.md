@@ -95,7 +95,7 @@ Under the **Environment** tab of your Web Service, add the following environment
 | `CORS_ALLOWED_ORIGINS` | **Yes** | Your Vercel frontend URL, e.g. `https://campus-nexus.vercel.app` (comma-separated if multiple) | No |
 | `ADMIN_PASSWORD` | **Yes** | Secure password for initial admin user creation on first boot | **YES** |
 | `ADMIN_USERNAME` | No (default: `admin@gmail.com`) | Username for administrative login | No |
-| `SUPABASE_SERVICE_KEY` | Conditional | Required only if event banner image uploads to Supabase Storage are used | **YES** |
+| `SUPABASE_SECRET_KEY` | Conditional | Required only if event banner image uploads to Supabase Storage are used | **YES** |
 | `PORT` | Auto | Render injects this automatically (e.g. `10000`); Tomcat binds dynamically via `server.port=${PORT:8080}` | No |
 | `SEED_SAMPLE_DATA` | No (default: `false`) | Keep `false` in production to prevent fake dummy data | No |
 

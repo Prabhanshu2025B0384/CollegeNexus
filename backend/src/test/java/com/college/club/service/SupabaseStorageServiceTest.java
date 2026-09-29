@@ -25,15 +25,15 @@ class SupabaseStorageServiceTest {
         assertFalse(storageService.isConfigured());
 
         ReflectionTestUtils.setField(storageService, "supabaseUrl", "https://xyz.supabase.co");
-        ReflectionTestUtils.setField(storageService, "supabaseServiceKey", "");
+        ReflectionTestUtils.setField(storageService, "supabaseSecretKey", "");
         assertFalse(storageService.isConfigured());
     }
 
     @Test
-    @DisplayName("Should detect when Supabase storage is properly configured")
+    @DisplayName("Should detect when Supabase storage is properly configured with modern secret key")
     void testIsConfiguredTrueWhenSet() {
         ReflectionTestUtils.setField(storageService, "supabaseUrl", "https://xyz.supabase.co");
-        ReflectionTestUtils.setField(storageService, "supabaseServiceKey", "mock-service-role-key");
+        ReflectionTestUtils.setField(storageService, "supabaseSecretKey", "sb_secret_mock_12345678901234567890");
         assertTrue(storageService.isConfigured());
     }
 
