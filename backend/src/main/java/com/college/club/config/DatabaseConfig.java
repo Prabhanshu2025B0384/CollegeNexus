@@ -20,70 +20,73 @@ public class DatabaseConfig {
     @Value("${DATABASE_URL:}")
     private String databaseUrl;
 
-    @Value("${spring.datasource.url:}")
-    private String springUrl;
-
-    @Value("${spring.datasource.username:}")
-    private String springUsername;
-
-    @Value("${spring.datasource.password:}")
-    private String springPassword;
-
     @Bean
     @Primary
     public DataSource dataSource() {
 
-        HikariConfig config = new HikariConfig();
-        config.setDriverClassName("org.postgresql.Driver");
-
-        String url = databaseUrl;
-
-        if (url == null || url.isBlank()) {
-            url = springUrl;
-        }
-
-        if (url == null || url.isBlank()) {
+        if (databaseUrl == null || databaseUrl.isBlank()) {
             throw new IllegalStateException(
-                    "No database URL configured. Set DATABASE_URL."
+                    "DATABASE_URL environment variable is not configured"
             );
         }
 
-        // Convert Supabase's standard PostgreSQL URL to JDBC format.
-        if (url.startsWith("postgresql://")) {
-            url = "jdbc:" + url;
-        } else if (url.startsWith("postgres://")) {
-            url = "jdbc:postgresql://" + url.substring("postgres://".length());
+        String jdbcUrl = databaseUrl.trim();
+
+        /*
+         * Render/Supabase provides:
+         *
+         * postgresql://user:password@host:5432/database?sslmode=require
+         *
+         * PostgreSQL JDBC requires:
+         *
+         * jdbc:postgresql://user:password@host:5432/database?sslmode=require
+         *
+         * We do NOT parse the URL ourselves.
+         */
+        if (jdbcUrl.startsWith("postgresql://")) {
+            jdbcUrl = "jdbc:" + jdbcUrl;
+        } else if (jdbcUrl.startsWith("postgres://")) {
+            jdbcUrl = "jdbc:postgresql://" +
+                    jdbcUrl.substring("postgres://".length());
+        } else if (!jdbcUrl.startsWith("jdbc:postgresql://")) {
+            throw new IllegalArgumentException(
+                    "DATABASE_URL must be a PostgreSQL connection URL"
+            );
         }
 
-        // Make sure SSL is required for remote PostgreSQL.
-        if (!url.contains("sslmode=")) {
-            url += url.contains("?")
+        // Require SSL for remote Supabase PostgreSQL.
+        if (!jdbcUrl.contains("sslmode=")) {
+            jdbcUrl += jdbcUrl.contains("?")
                     ? "&sslmode=require"
                     : "?sslmode=require";
         }
 
-        config.setJdbcUrl(url);
+        HikariConfig hikariConfig = new HikariConfig();
 
-        if (springUsername != null && !springUsername.isBlank()) {
-            config.setUsername(springUsername);
-        }
+        hikariConfig.setDriverClassName("org.postgresql.Driver");
+        hikariConfig.setJdbcUrl(jdbcUrl);
 
-        if (springPassword != null && !springPassword.isBlank()) {
-            config.setPassword(springPassword);
-        }
+        /*
+         * Connection pool configuration
+         */
+        hikariConfig.setMaximumPoolSize(10);
+        hikariConfig.setMinimumIdle(2);
 
-        config.setMaximumPoolSize(10);
-        config.setMinimumIdle(2);
-        config.setIdleTimeout(300000);
-        config.setMaxLifetime(600000);
-        config.setConnectionTimeout(30000);
-        config.setConnectionTestQuery("SELECT 1");
+        hikariConfig.setConnectionTimeout(30_000);
+        hikariConfig.setValidationTimeout(5_000);
 
-        // Don't log the password-containing JDBC URL.
+        hikariConfig.setIdleTimeout(300_000);
+        hikariConfig.setMaxLifetime(600_000);
+
+        /*
+         * Validate connections before handing them to the application.
+         */
+        hikariConfig.setConnectionTestQuery("SELECT 1");
+
         logger.info(
-                "Initializing PostgreSQL DataSource using configured DATABASE_URL"
+                "Initializing PostgreSQL DataSource from DATABASE_URL"
         );
 
-        return new HikariDataSource(config);
+        return new HikariDataSource(hikariConfig);
     }
 }
