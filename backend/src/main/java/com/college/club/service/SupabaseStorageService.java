@@ -87,11 +87,11 @@ public class SupabaseStorageService {
         String cleanBucket = (storageBucket != null && !storageBucket.trim().isEmpty()) ? storageBucket.trim() : "SDMS";
         String cleanBaseUrl = supabaseUrl.trim().replaceAll("/+$", "");
         String cleanKey = supabaseServiceKey.trim().replaceAll("^[\"']|[\"']$", "");
-        String authHeader = cleanKey.startsWith("Bearer ") ? cleanKey : "Bearer " + cleanKey;
         String rawKey = cleanKey.startsWith("Bearer ") ? cleanKey.substring(7).trim() : cleanKey;
+        boolean isJwt = isJwtToken(rawKey);
 
-        if (rawKey.startsWith("sb_secret_")) {
-            logger.warn("SUPABASE_CONFIG_WARNING: Configured Supabase key begins with 'sb_secret_'. The Supabase Storage REST API requires the JWT 'service_role' key (starting with 'eyJ...') from Supabase Settings -> API.");
+        if (!isJwt) {
+            logger.warn("SUPABASE_KEY_FORMAT: Configured key does not appear to be a JWT. Sending 'apikey' header and omitting 'Authorization: Bearer' to avoid Compact JWS validation failure.");
         }
 
         // Random UUID filename with server-verified extension (prevents path traversal and extension spoofing)
@@ -104,15 +104,19 @@ public class SupabaseStorageService {
                 cleanBucket, objectPath, validatedImage.mimeType, fileBytes.length);
 
         try {
-            HttpRequest request = HttpRequest.newBuilder()
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(uploadUrl))
-                    .header("Authorization", authHeader)
                     .header("apikey", rawKey)
                     .header("Content-Type", validatedImage.mimeType)
                     .header("x-upsert", "true")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(fileBytes))
-                    .timeout(Duration.ofSeconds(30))
-                    .build();
+                    .timeout(Duration.ofSeconds(30));
+
+            if (isJwt) {
+                requestBuilder.header("Authorization", "Bearer " + rawKey);
+            }
+
+            HttpRequest request = requestBuilder.build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -127,9 +131,11 @@ public class SupabaseStorageService {
                         response.statusCode(), cleanBucket, objectPath, validatedImage.mimeType, fileBytes.length, safeBody);
 
                 String detailMessage = "Failed to upload image to storage service.";
-                if (response.statusCode() == 401 || response.statusCode() == 403) {
-                    if (rawKey.startsWith("sb_secret_") || safeBody.contains("Invalid Compact JWS")) {
-                        detailMessage = "Supabase Storage authentication failed (HTTP " + response.statusCode() + "): The configured key is in 'sb_secret_' format. Supabase Storage requires the JWT 'service_role' secret key (starting with 'eyJ...') from Supabase Settings -> API.";
+                if (response.statusCode() == 400 && safeBody.contains("headers must have required property 'authorization'")) {
+                    detailMessage = "Supabase Storage rejected upload (HTTP 400): The Supabase Storage REST API requires a valid JWT 'service_role' key in the Authorization header. Opaque 'sb_secret_' keys are not accepted by the Storage REST endpoint without a companion JWT.";
+                } else if (response.statusCode() == 401 || response.statusCode() == 403) {
+                    if (safeBody.contains("Invalid Compact JWS")) {
+                        detailMessage = "Supabase Storage authentication failed (HTTP " + response.statusCode() + "): Invalid Compact JWS. The configured key is not a valid JWT.";
                     } else if (safeBody.contains("Unregistered API key")) {
                         detailMessage = "Supabase Storage authentication failed (HTTP " + response.statusCode() + "): The configured SUPABASE_SERVICE_KEY is not registered for this Supabase project.";
                     } else {
@@ -184,5 +190,23 @@ public class SupabaseStorageService {
         }
 
         throw new IllegalArgumentException("Invalid file format. Only verified JPEG, PNG, and WebP images are permitted.");
+    }
+
+    /**
+     * Checks if a token conforms to the Compact JWS format (three dot-separated base64 segments).
+     * Modern opaque keys (such as 'sb_secret_...' or 'sb_publishable_...') return false.
+     */
+    public boolean isJwtToken(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            return false;
+        }
+        String clean = token.trim();
+        if (clean.startsWith("sb_")) {
+            return false;
+        }
+        int firstDot = clean.indexOf('.');
+        int secondDot = firstDot != -1 ? clean.indexOf('.', firstDot + 1) : -1;
+        int thirdDot = secondDot != -1 ? clean.indexOf('.', secondDot + 1) : -1;
+        return firstDot > 0 && secondDot > firstDot && thirdDot == -1;
     }
 }

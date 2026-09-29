@@ -142,4 +142,22 @@ class SupabaseStorageServiceTest {
         Exception ex = assertThrows(IllegalStateException.class, () -> storageService.uploadImage(file));
         assertFalse(ex.getMessage().contains("Invalid file"));
     }
+
+    @Test
+    @DisplayName("isJwtToken should identify modern opaque keys as non-JWT")
+    void testIsJwtTokenOpaqueKeys() {
+        assertFalse(storageService.isJwtToken("sb_secret_abc123456789"));
+        assertFalse(storageService.isJwtToken("sb_publishable_abc123456789"));
+        assertFalse(storageService.isJwtToken("simple-api-key"));
+        assertFalse(storageService.isJwtToken(null));
+        assertFalse(storageService.isJwtToken(""));
+        assertFalse(storageService.isJwtToken("   "));
+        assertFalse(storageService.isJwtToken("part1.part2")); // only 1 dot
+    }
+
+    @Test
+    @DisplayName("isJwtToken should identify valid Compact JWS JWT tokens")
+    void testIsJwtTokenValidJwt() {
+        assertTrue(storageService.isJwtToken("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature123"));
+    }
 }
