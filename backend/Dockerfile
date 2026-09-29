@@ -40,8 +40,6 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Production JVM execution options:
-# - UseContainerSupport: respects cgroup CPU & memory quotas in cloud containers
-# - MaxRAMPercentage: restricts heap allocation to 75% of container RAM (prevents OOM on 512MB free tier)
-# - java.security.egd: non-blocking entropy source for fast SSL/JWT initialization
-# - jdk.tls.client.protocols: explicitly enables modern TLS 1.2 and TLS 1.3
-ENTRYPOINT ["sh", "-c", "java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3 -jar app.jar"]
+# - TieredCompilation / TieredStopAtLevel=1: restricts JIT to C1 compiler to eliminate CPU spikes and achieve sub-second startup
+# - Xms256m / Xmx384m: bounds memory footprint within free-tier container RAM limit (512MB)
+ENTRYPOINT ["java", "-XX:+TieredCompilation", "-XX:TieredStopAtLevel=1", "-Xms256m", "-Xmx384m", "-jar", "app.jar"]
