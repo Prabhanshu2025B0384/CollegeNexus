@@ -330,7 +330,7 @@ Write-Host "  - Student Portal:   http://localhost:5173" -ForegroundColor White
 Write-Host "  - Admin Dashboard:  http://localhost:5173/admin/dashboard" -ForegroundColor White
 Write-Host "  - Backend REST API: http://localhost:8080/api" -ForegroundColor White
 Write-Host "  - Logs:             logs/backend.log and logs/frontend.log" -ForegroundColor DarkGray
-Write-Host "  - To Stop Servers:  run stop.bat" -ForegroundColor Yellow
+Write-Host "  - To Stop Servers:  run .\stop.ps1" -ForegroundColor Yellow
 Write-Host "===============================================================================" -ForegroundColor Green
 Write-Host ""
 

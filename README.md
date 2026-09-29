@@ -1,406 +1,334 @@
-# 🎓 Campus Nexus — College Club Event Management Platform
+# Campus Nexus — College Club & Event Management Platform
 
-A complete, full-stack event management web application engineered for college clubs, student chapters, and university organizations. It provides a public-facing portal for students to browse and register for events, alongside an administrative dashboard for organizers to manage events and student attendee rosters.
+[![Frontend Build](https://img.shields.io/badge/Frontend-React%2019%20%7C%20TypeScript%20%7C%20Vite-61DAFB?logo=react&logoColor=white)](https://react.dev)
+[![Backend Build](https://img.shields.io/badge/Backend-Spring%20Boot%203.3.4%20%7C%20Java%2021-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Database](https://img.shields.io/badge/Database-Supabase%20PostgreSQL-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
+[![Deployment](https://img.shields.io/badge/Deployment-Vercel%20%2B%20Render-black?logo=vercel&logoColor=white)](https://vercel.com)
 
----
-
-## 📑 Table of Contents
-
-1. [Project Overview](#1-project-overview)
-2. [What the Application Does](#2-what-the-application-does)
-3. [Architecture Diagram](#3-architecture-diagram)
-4. [Technology Stack](#4-technology-stack)
-5. [Project Structure](#5-project-structure)
-6. [Prerequisites](#6-prerequisites)
-7. [Step-by-Step Local Setup Guide](#7-step-by-step-local-setup-guide)
-   - [STEP 1 — Install Prerequisites](#step-1--install-prerequisites)
-   - [STEP 2 — Create Your Supabase PostgreSQL Database](#step-2--create-your-supabase-postgresql-database)
-   - [STEP 3 — Configure Environment Variables](#step-3--configure-environment-variables)
-   - [STEP 4 — Run with One-Click `start.bat`](#step-4--run-with-one-click-startbat)
-   - [STEP 5 — Stop with `stop.bat`](#step-5--stop-with-stopbat)
-8. [Database & Seed Data (Dummy Data)](#8-database--seed-data-dummy-data)
-9. [Admin Login & Authentication](#9-admin-login--authentication)
-10. [Application Routes (Student & Admin)](#10-application-routes-student--admin)
-11. [REST API Documentation](#11-rest-api-documentation)
-12. [Security Architecture](#12-security-architecture)
-13. [Deployment to Production](#13-deployment-to-production)
-    - [Deploy Backend to Render](#a-deploy-spring-boot-backend-to-render)
-    - [Deploy Frontend to Vercel](#b-deploy-react-frontend-to-vercel)
-    - [Configuring CORS in Production](#c-configuring-cors-in-production)
-14. [Troubleshooting & Common Mistakes](#14-troubleshooting--common-mistakes)
-15. [Future Improvements](#15-future-improvements)
+**Campus Nexus** is a modern, responsive collegiate club and event management platform. It empowers students to discover campus workshops, hackathons, seminars, and sports tournaments with real-time seat availability, and provides administrators with an analytics dashboard, event management tools, attendee rosters, and capacity safeguards.
 
 ---
 
-## 1. Project Overview
+## Table of Contents
 
-Campus Nexus empowers student organizations to organize and broadcast events across campus. It replaces disjointed spreadsheets and Google Forms with a unified, database-driven platform featuring real-time registration tracking, capacity limits, and duplicate-entry prevention.
-
----
-
-## 2. What the Application Does
-
-### 🧑‍🎓 Student / Public Portal:
-* **Club Homepage:** Learn about club activities, view key statistics, and explore what students gain.
-* **Spotlight Featured Event:** Discover the primary event of the month dynamically served from the database.
-* **Upcoming Events Carousel & Grid:** Browse events sorted by date with visual category badges.
-* **Event Search & Filtering:** Search events by keyword/venue and filter by categories (*Technical, Workshop, Hackathon, Cultural, Sports, Literary, Gaming, Career, Seminar, Competition*).
-* **Event Details Page:** View complete descriptions, time schedules, venues, and seat availability.
-* **One-Click Registration:** Enter student details (*Name, Email, College, Academic Year, Phone*) with immediate confirmation and duplicate registration prevention.
-
-### 🛡️ Admin Management Portal:
-* **Secure Admin Authentication:** Spring Security with BCrypt password hashing and stateless JWT tokens.
-* **Executive Dashboard:** Live metrics displaying total events, upcoming events, total registrations, and current featured event.
-* **Full Event CRUD:** Create, edit, and delete events with date pickers, capacity settings, category selectors, and safe deletion confirmations.
-* **Registration Roster:** Inspect all participant submissions, search by student name/email/college, filter by event or academic year, and export attendee rosters directly to CSV.
-
----
-
-## 3. Architecture Diagram
-
-```text
-                 ┌────────────────────────────────┐
-                 │         Student / Admin        │
-                 │          Web Browser           │
-                 └───────────────┬────────────────┘
-                                 │
-                                 ▼
-                 ┌────────────────────────────────┐
-                 │       React 19 + Vite + TS     │
-                 │         Frontend App           │
-                 │   (Hosted on Vercel / Local)   │
-                 └───────────────┬────────────────┘
-                                 │
-                                 │ HTTP REST Requests
-                                 │ Bearer JWT (Admin)
-                                 ▼
-                 ┌────────────────────────────────┐
-                 │       Spring Boot 3.3 API      │
-                 │       (Java 21 / Maven)        │
-                 │   (Hosted on Render / Local)   │
-                 └───────────────┬────────────────┘
-                                 │
-                                 │ JDBC / TLS
-                                 ▼
-                 ┌────────────────────────────────┐
-                 │       Supabase PostgreSQL      │
-                 │        Cloud Database          │
-                 └────────────────────────────────┘
-```
+- [Features](#features)
+- [Technology Stack](#technology-stack)
+- [Project Structure](#project-structure)
+- [System Requirements](#system-requirements)
+- [Local Development](#local-development)
+  - [1. Clone Repository](#1-clone-repository)
+  - [2. Configure Environment Variables](#2-configure-environment-variables)
+  - [3. Start Application](#3-start-application)
+  - [4. Stop Application](#4-stop-application)
+  - [Independent Service Startup](#independent-service-startup)
+- [Environment Variables](#environment-variables)
+  - [Frontend (Vercel / Vite)](#frontend-vercel--vite)
+  - [Backend (Render / Spring Boot)](#backend-render--spring-boot)
+- [Database Configuration](#database-configuration)
+- [File Storage (Supabase Storage)](#file-storage-supabase-storage)
+- [Security Architecture](#security-architecture)
+- [Automated Testing](#automated-testing)
+- [Production Deployment](#production-deployment)
+- [Contributing](#contributing)
 
 ---
 
-## 4. Technology Stack
+## Features
 
-| Layer | Technologies Used | Description |
+### Student & Public Portal
+- **Hero & Featured Events:** Showcase flagship fests and hackathons with dynamic countdown badges, dates, and venues.
+- **Event Discovery & Filtering:** Real-time search across event titles, venues, and descriptions, alongside category filters (*Hackathon, Workshop, Cultural, Sports, Technical, Competition, Career, Literary, Gaming, Seminar*).
+- **Comprehensive Event Details:** View schedule, venue location, capacity status bar, remaining seats, and registration deadlines.
+- **Validated Event Registration:** Responsive registration modal capturing student name, email, college, academic year, and contact number.
+- **Duplicate & Capacity Safeguards:** Immediate feedback preventing duplicate registrations with the same email or registering for events at full capacity.
+
+### Administrator Portal
+- **Secure Authentication:** Stateless JWT-based authentication with BCrypt credential verification and brute-force rate limiting.
+- **Real-Time Analytics Dashboard:** Key metrics at a glance: Total Events, Active Events, Total Registrations, and Average Capacity Utilization.
+- **Event Management (CRUD):** Create new events with banner image uploads (or CDN image URLs), update event details and capacities, or delete events with cascade cleanup.
+- **Registration Management:** Searchable attendee roster filtered by event or academic year with registration timestamps and contact information.
+- **Responsive Admin Controls:** Full management capabilities optimized for desktop monitors, laptops, tablets, and mobile devices.
+
+---
+
+## Technology Stack
+
+| Layer | Technologies | Version |
 | :--- | :--- | :--- |
-| **Frontend** | React 19, TypeScript, Vite, React Router 7, Lucide Icons | Responsive single-page application with custom CSS design tokens |
-| **Backend** | Java 21, Spring Boot 3.3.4, Spring Data JPA, Spring Security, Bean Validation | Clean layered REST architecture (Controller → Service → Repository → Entity) |
-| **Database** | PostgreSQL (Supabase) | Cloud-hosted relational database with relational constraints and indexing |
-| **Security** | JWT (jjwt 0.11.5), BCrypt | Stateless token-based security and password encryption |
-| **Build Tools** | Maven 3.9 (Maven Wrapper included `mvnw`), npm | Independent build scripts for zero-conflict portability |
+| **Frontend** | React, TypeScript, Vite, React Router, Lucide Icons | React 19.2, Vite 8.3, TS 6.0, Router 7.18 |
+| **Styling** | Vanilla CSS Design System (Custom Spacing Tokens & CSS Grid) | Responsive (320px – 1440px+) |
+| **Backend** | Spring Boot, Spring Security, Spring Data JPA, Hibernate, HikariCP | Spring Boot 3.3.4, Java 21 |
+| **Authentication** | Stateless JWT (HS256) with Issuer & Audience validation | JJWT 0.11.5 |
+| **Database** | PostgreSQL (Supabase Managed Postgres / Connection Pooler) | PostgreSQL 15+ |
+| **Storage** | Supabase Storage (S3-compatible Object Storage for event banners) | S3 / REST API |
+| **Hosting** | Vercel (Frontend SPA) + Render (Backend REST API Web Service) | Production Edge |
 
 ---
 
-## 5. Project Structure
+## Project Structure
 
-```text
-EventMangement/
-├── backend/                             # Spring Boot Java Application
-│   ├── .mvn/wrapper/                    # Bundled Maven Wrapper (no local Maven install needed)
+```
+Campus-Nexus/
+├── backend/
 │   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/college/club/
-│   │   │   │   ├── CollegeClubApplication.java
-│   │   │   │   ├── config/              # CORS config & safe DataInitializer
-│   │   │   │   ├── controller/          # REST controllers (Public & Admin)
-│   │   │   │   ├── dto/                 # Request & response data transfer objects
-│   │   │   │   ├── entity/              # JPA entities (User, Event, Registration)
-│   │   │   │   ├── exception/           # Safe global exception handling
-│   │   │   │   ├── repository/          # Spring Data JPA repositories
-│   │   │   │   ├── security/            # JWT utility, auth filter, security config
-│   │   │   │   └── service/             # Business logic & transaction management
-│   │   │   └── resources/
-│   │   │       ├── application.properties # Environment-driven properties
-│   │   │       └── schema.sql           # Reference PostgreSQL DDL script
-│   │   └── test/
-│   ├── pom.xml                          # Maven dependencies
-│   ├── mvnw & mvnw.cmd                  # Maven wrapper executable scripts
-│   └── .env.example                     # Backend environment template
-│
-├── frontend/                            # React + Vite TypeScript Application
+│   │   ├── main/java/com/college/club/
+│   │   │   ├── config/              # SecurityConfig, CorsConfig, DatabaseConfig, DataInitializer
+│   │   │   ├── controller/          # REST endpoints (PublicEvent, PublicReg, Admin, Auth, Health)
+│   │   │   ├── dto/                 # Request & Response Data Transfer Objects
+│   │   │   ├── entity/              # JPA domain entities (Event, Registration, User)
+│   │   │   ├── exception/           # Global exception handler & sanitized error responses
+│   │   │   ├── repository/          # Spring Data JPA repositories with row-level locks
+│   │   │   ├── security/            # JWT utility, filters, custom user details
+│   │   │   └── service/             # Business logic & Supabase Storage integration
+│   │   ├── main/resources/
+│   │   │   ├── application.properties # Spring configuration with environment resolution
+│   │   │   ├── sample-seed.sql      # Standalone idempotent sample data script for demo/staging
+│   │   │   └── schema.sql           # Reference DDL schema with indexes and foreign keys
+│   │   └── test/java/com/college/club/
+│   │       ├── controller/          # HealthController unit test
+│   │       ├── security/            # JwtUtil and RateLimitingFilter unit tests
+│   │       └── service/             # RegistrationService and SupabaseStorageService tests
+│   ├── .env.example                 # Backend environment variable template
+│   ├── mvnw / mvnw.cmd              # Maven wrapper scripts
+│   └── pom.xml                      # Maven project configuration (Java 21, Spring Boot 3.3.4)
+├── frontend/
+│   ├── public/                      # Static assets & SVG icons
 │   ├── src/
-│   │   ├── components/                  # Navbar, Footer, EventCard, Modals, etc.
-│   │   ├── context/                     # AuthContext for admin state
-│   │   ├── pages/                       # Home, Events, Details, Admin pages
-│   │   ├── services/                    # Centralized API service layer
-│   │   ├── types/                       # TypeScript interfaces
-│   │   ├── App.tsx                      # Application routing
-│   │   ├── index.css                    # Design system tokens and styles
-│   │   └── main.tsx                     # React DOM entry point
-│   ├── index.html                       # HTML head with fonts and SEO metadata
-│   ├── package.json                     # Frontend dependencies
-│   ├── tsconfig.json                    # TypeScript compiler configuration
-│   ├── vite.config.ts                   # Vite configuration
-│   ├── vercel.json                      # Vercel SPA routing rewrite config
-│   └── .env.example                     # Frontend environment template
-│
-├── start.bat                            # Windows one-click local startup script
-├── stop.bat                             # Windows one-click local shutdown script
-├── .gitignore                           # Git ignore rules for node, java, env
-├── .env.example                         # Master environment reference
-└── README.md                            # Comprehensive project guide
+│   │   ├── assets/                  # Hero illustration & logos
+│   │   ├── components/              # EventCard, Navbar, Footer, Modals, Search, CategoryFilter
+│   │   ├── context/                 # AuthContext & session management
+│   │   ├── pages/                   # Home, Events, EventDetails, Admin Dashboard/Events/Regs
+│   │   ├── services/                # API client modules (events, registrations, auth)
+│   │   ├── types/                   # TypeScript interfaces (Event, Registration, User)
+│   │   ├── App.tsx & main.tsx       # Root component & React 19 router
+│   │   └── index.css                # Global design system, spacing scale & component styles
+│   ├── .env.example                 # Frontend environment variable template
+│   ├── package.json                 # Node dependencies and scripts
+│   ├── tsconfig.json                # TypeScript compiler configuration
+│   ├── vercel.json                  # Vercel SPA direct route rewrite configuration
+│   └── vite.config.ts               # Vite configuration
+├── .env.example                     # Root reference environment variable template
+├── .gitignore                       # Git ignore rules (secrets, node_modules, build targets)
+├── DEPLOYMENT_GUIDE.md              # Complete step-by-step production deployment guide
+├── render.yaml                      # Render Blueprint Infrastructure-as-Code
+├── start.ps1                        # Primary one-click local startup script
+├── stop.ps1                         # Primary one-click clean shutdown script
+└── README.md
 ```
 
 ---
 
-## 6. Prerequisites
+## System Requirements
 
-To run this application locally, you only need:
-1. **Java Development Kit (JDK) 21** or later. Check with `java -version`.
-2. **Node.js 20+** and **npm**. Check with `node -v` and `npm -v`.
-3. A free **Supabase** account (for your cloud PostgreSQL database).
-
-*(Note: You do not need to install Maven globally; the project includes `mvnw.cmd` automatically).*
+- **Java Development Kit (JDK):** Version 21 or later ([Eclipse Temurin](https://adoptium.net/))
+- **Node.js:** Version 20.x or later with `npm` ([Node.js](https://nodejs.org/))
+- **Database:** Supabase PostgreSQL cloud instance or local PostgreSQL on port 5432
+- **Git:** Version 2.30+
 
 ---
 
-## 7. Step-by-Step Local Setup Guide
+## Local Development
 
-### STEP 1 — Install Prerequisites
-* Download JDK 21: [Oracle JDK 21](https://www.oracle.com/java/technologies/downloads/#java21) or [Eclipse Adoptium Temurin 21](https://adoptium.net/).
-* Download Node.js: [Node.js Official Website](https://nodejs.org/).
+### 1. Clone Repository
 
-### STEP 2 — Create Your Supabase PostgreSQL Database
-1. Go to [supabase.com](https://supabase.com) and create a free account.
-2. Click **New Project** and choose a name (e.g. `college-club-events`).
-3. Set a strong database password (store this somewhere safe).
-4. Once the project finishes provisioning (about 1 minute):
-   - Go to **Project Settings** (gear icon) ➔ **Database**.
-   - Scroll down to **Connection String** ➔ Select the **URI** tab.
-   - It will look like this:
-     ```text
-     postgresql://postgres.[PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
-     ```
-   - For Java JDBC, replace the protocol with `jdbc:postgresql://` and add `?sslmode=require` at the end:
-     ```text
-     jdbc:postgresql://aws-0-[REGION].pooler.supabase.com:6543/postgres?sslmode=require
-     ```
-
-### STEP 3 — Configure Environment Variables
-
-#### Backend Configuration:
-Create a `.env` file in the `backend/` folder (or copy `backend/.env.example`):
-```env
-PORT=8080
-
-# The 4 Supabase Core Values
-SUPABASE_URL=https://vshsmnrzeusimlcemzhc.supabase.co
-SUPABASE_SERVICE_KEY=your_supabase_service_role_key
-SUPABASE_STORAGE_BUCKET=SDMS
-DATABASE_URL=postgresql://postgres.vshsmnrzeusimlcemzhc:your_password@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
-
-# Security & CORS
-JWT_SECRET=superSecretRandomStringWithAtLeast32Characters12345!
-CORS_ALLOWED_ORIGINS=http://localhost:5173
-
-# Admin Credentials
-ADMIN_USERNAME=admin@gmail.com
-ADMIN_PASSWORD=admin
-ADMIN_EMAIL=admin@collegeclub.edu
+```bash
+git clone https://github.com/Prabhanshu2025B0384/CollegeNexus.git
+cd CollegeNexus
 ```
 
-#### Frontend Configuration:
-Create a `.env` file in the `frontend/` folder (created automatically on startup):
-```env
-VITE_API_URL=http://localhost:8080/api
+### 2. Configure Environment Variables
+
+Create `.env` in `backend/` and `frontend/` by copying the provided example templates:
+
+```bash
+# In backend directory:
+copy backend\.env.example backend\.env
+
+# In frontend directory:
+copy frontend\.env.example frontend\.env
 ```
 
-### STEP 4 — Run with One-Click `start.bat`
-On Windows, double-click:
-```cmd
-start.bat
+Ensure `backend/.env` has your database credentials, admin credentials, and a secure `JWT_SECRET` (at least 32 characters).
+
+### 3. Start Application
+
+Campus Nexus includes an automated PowerShell startup script that validates your environment, installs missing dependencies, starts both services in the background, waits for readiness, and opens your browser:
+
+```powershell
+.\start.ps1
 ```
-This script will:
-1. Launch the Spring Boot backend on `http://localhost:8080`.
-2. Launch the Vite React frontend on `http://localhost:5173`.
-3. Automatically open your browser to `http://localhost:5173`.
 
-> **Alternatively (Manual Startup):**
-> * Terminal 1 (Backend):
->   ```bash
->   cd backend
->   .\mvnw.cmd spring-boot:run
->   ```
-> * Terminal 2 (Frontend):
->   ```bash
->   cd frontend
->   npm run dev
->   ```
+Once running:
+- **Student Portal:** `http://localhost:5173`
+- **Admin Login:** `http://localhost:5173/admin`
+- **Admin Dashboard:** `http://localhost:5173/admin/dashboard`
+- **Backend API:** `http://localhost:8080/api`
+- **Health Probe:** `http://localhost:8080/api/health`
 
-### STEP 5 — Stop with `stop.bat`
-To cleanly shut down both servers without leaving background ports occupied, double click:
-```cmd
-stop.bat
+### 4. Stop Application
+
+To cleanly stop the background backend and frontend processes without affecting unrelated system tasks:
+
+```powershell
+.\stop.ps1
+```
+
+### Independent Service Startup
+
+If you prefer running services in separate terminal windows:
+
+**Terminal 1 — Backend:**
+```powershell
+cd backend
+.\mvnw.cmd spring-boot:run
+```
+
+**Terminal 2 — Frontend:**
+```powershell
+cd frontend
+npm install
+npm run dev
 ```
 
 ---
 
-## 8. Database & Seed Data (Dummy Data)
+## Environment Variables
 
-When the backend connects to your Supabase PostgreSQL database for the first time, Spring Boot's JPA will automatically create the tables:
-1. `users` — Admin and staff credentials.
-2. `events` — Event details, schedules, capacities, and flags.
-3. `registrations` — Student registrations with unique constraint on `(event_id, email)`.
+### Frontend (Vercel / Vite)
 
-### Idempotent Automatic Seeding
-The backend includes a `DataInitializer` that checks table counts before writing data:
-* **Admin User:** If 0 users exist, it creates the default admin user.
-* **10 Realistic Club Events:** If 0 events exist, it seeds 10 diverse events across categories (*Nexus Hackathon 2026, Full-Stack Mastery, Cloud & DevOps, Aura Cultural Fest, Cricket Tournament, ByteBattle Coding Challenge, Tech Horizons Mentorship, National Youth Debate, Apex Gaming Cup, and Web3 Seminar*).
-* **Sample Registrations:** Seeds realistic sample student registrations for immediate preview.
-* **Safe Restarting:** If you restart the server, existing records are detected and duplicate seeding is skipped.
+The frontend requires only **one public variable**. Sensitive credentials must never be passed to the client.
+
+| Variable | Description | Required? | Example Value | Secret? |
+| :--- | :--- | :---: | :--- | :---: |
+| `VITE_API_URL` | Base REST API endpoint URL | **Yes** | `http://localhost:8080/api` *(Local)*<br>`https://campus-nexus-api.onrender.com/api` *(Prod)* | **NO** |
 
 ---
 
-## 9. Admin Login & Authentication
+### Backend (Render / Spring Boot)
 
-To log into the administrator portal:
-1. Click **Admin Portal** in the top navigation bar or navigate to:
-   ```text
-   http://localhost:5173/admin/login
-   ```
-2. Enter the credentials defined in your backend `.env`:
-   * **Username:** `admin`
-   * **Password:** `Admin@12345` (or your configured `ADMIN_PASSWORD`)
-3. Upon authentication, a stateless JWT token is returned and stored in `localStorage`, granting access to `/admin/dashboard`, `/admin/events`, and `/admin/registrations`.
+| Variable | Description | Required? | Example / Format | Secret? |
+| :--- | :--- | :---: | :--- | :---: |
+| `DATABASE_URL` | Supabase PostgreSQL connection URI | **Yes** | `postgresql://postgres.[REF]:[PASS]@[HOST]:5432/postgres` | **YES** |
+| `JWT_SECRET` | 256-bit random key for signing admin tokens | **Yes** | 32+ character random string | **YES** |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated allowed CORS origins | **Yes** | `https://campus-nexus.vercel.app` *(Prod)*<br>`http://localhost:5173` *(Local)* | **NO** |
+| `ADMIN_PASSWORD` | Password for seeding initial admin user | **Yes** | Secure password | **YES** |
+| `ADMIN_USERNAME` | Username for admin login (default: `admin@gmail.com`) | No | `admin@gmail.com` | **NO** |
+| `ADMIN_EMAIL` | Admin contact email (default: `admin@collegeclub.edu`) | No | `admin@collegeclub.edu` | **NO** |
+| `SUPABASE_SERVICE_KEY` | Supabase `service_role` key (required only for banner image upload) | Conditional | Secret key from Supabase Settings → API | **YES** |
+| `SUPABASE_STORAGE_BUCKET`| Supabase bucket name (default: `SDMS`) | No | `SDMS` | **NO** |
+| `SEED_SAMPLE_DATA` | Enable demo event seeding on empty DB (default: `false`) | No | `false` in production, `true` for demo | **NO** |
+| `PORT` | Web server port (injected automatically by Render) | Auto | `8080` | **NO** |
 
----
-
-## 10. Application Routes (Student & Admin)
-
-### Student Routes:
-* `/` — Homepage with Hero, Featured Event spotlight, upcoming events grid, and club introduction.
-* `/events` — Searchable and category-filterable directory of all club events.
-* `/events/:id` — Dedicated event details page with full description, schedule, and direct registration modal.
-
-### Administrator Routes:
-* `/admin/login` — Administrative authentication portal.
-* `/admin/dashboard` — Live dashboard with high-level statistics and quick management shortcuts.
-* `/admin/events` — Event management table with Add, Edit, and Delete actions.
-* `/admin/registrations` — Attendee registration table with search, event filters, academic year filters, and CSV export.
+> **Auto-Derived `SUPABASE_URL`:** The backend automatically derives `SUPABASE_URL` (`https://[PROJECT_REF].supabase.co`) from `DATABASE_URL`'s hostname or username. You do not need to configure `SUPABASE_URL` manually unless using a custom domain.
 
 ---
 
-## 11. REST API Documentation
+## Database Configuration
 
-### Public Endpoints:
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/events` | List all events (supports `?search=...` and `?category=...`) |
-| `GET` | `/api/events/{id}` | Get event details by ID |
-| `GET` | `/api/events/featured` | Get current primary featured event |
-| `GET` | `/api/events/upcoming` | Get upcoming events (`?limit=6`) |
-| `GET` | `/api/events/categories` | Get unique list of existing categories |
-| `POST` | `/api/events/{id}/registrations` | Register student for an event |
+Campus Nexus connects to PostgreSQL via HikariCP connection pooling, pre-configured for Supabase Transaction Pooler (port 5432 / 6543) and direct connections.
 
-### Authentication Endpoints:
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/auth/login` | Login with username and password, returns JWT |
-| `GET` | `/api/auth/me` | Get profile of authenticated user |
-
-### Admin Endpoints (Require `Authorization: Bearer <TOKEN>`):
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/admin/dashboard/stats` | Aggregated dashboard metrics |
-| `GET` | `/api/admin/events` | List events with attendee counts |
-| `POST` | `/api/admin/events` | Create a new event |
-| `PUT` | `/api/admin/events/{id}` | Update existing event |
-| `DELETE` | `/api/admin/events/{id}` | Delete event (cascades associated registrations) |
-| `GET` | `/api/admin/registrations` | Search and filter registrations (`?search=...&eventId=...&year=...`) |
-| `DELETE` | `/api/admin/registrations/{id}` | Remove single registration record |
+- **Schema Auto-Update:** Hibernate manages table synchronization via `spring.jpa.hibernate.ddl-auto=update`.
+- **Reference DDL:** The full database schema with explicit foreign keys and indexes is documented in [`backend/src/main/resources/schema.sql`](file:///c:/Users/idonp/OneDrive/Desktop/EventMangement/backend/src/main/resources/schema.sql).
+- **Production Cleanliness Guarantee:** The application **never** auto-seeds dummy data into an empty production database (`app.seed.sample-data=false`).
+- **Optional Staging Seed:** An idempotent SQL script with 10 realistic events is available in [`backend/src/main/resources/sample-seed.sql`](file:///c:/Users/idonp/OneDrive/Desktop/EventMangement/backend/src/main/resources/sample-seed.sql) to run manually in Supabase SQL Editor if desired.
 
 ---
 
-## 12. Security Architecture
+## File Storage (Supabase Storage)
 
-1. **Password Hashing:** Passwords are encrypted with standard `BCryptPasswordEncoder` (never stored in plaintext).
-2. **Stateless JWT Tokens:** Authentication uses HMAC-SHA256 tokens signed with `JWT_SECRET`. Tokens expire automatically after 24 hours (`JWT_EXPIRATION_MS`).
-3. **Server-Side Authorization:** Admin endpoints under `/api/admin/**` strictly enforce `ROLE_ADMIN` server-side via `SecurityConfig`. Frontend UI gating is strictly for UX.
-4. **Input Validation:** All registration requests undergo server-side Bean Validation (`@NotBlank`, `@Email`, regex phone checks).
-5. **Duplicate Registration Prevention:** Database-enforced unique constraint on `(event_id, email)` prevents spam or double submissions.
-6. **SQL Injection Defense:** Built completely on Spring Data JPA parameterized queries and Criteria API.
-7. **Safe Error Handling:** `GlobalExceptionHandler` formats all errors into clean JSON payloads without leaking internal database errors or stack traces.
+Campus Nexus supports custom banner image uploads for events via Supabase Storage:
+
+1. **Bucket:** Configured in `app.supabase.storage-bucket` (default: `SDMS`). Must be marked **Public** in Supabase so uploaded images can be served globally via CDN.
+2. **Strict Content Validation:** The backend inspects true file magic bytes (JPEG, PNG, WebP) and rejects disguised HTML, SVGs with embedded scripts, executable binaries, and files larger than 5MB.
+3. **Optional Feature:** If `SUPABASE_SERVICE_KEY` is not provided, administrators can still assign event banners by entering any external image URL (e.g., Unsplash, Cloudinary, Imgur).
 
 ---
 
-## 13. Deployment to Production
+## Security Architecture
 
-### A. Deploy Spring Boot Backend to Render
-1. Create a free account on [render.com](https://render.com).
-2. Click **New +** ➔ **Web Service** and connect your GitHub repository.
-3. Configure the service:
-   * **Root Directory:** `backend`
-   * **Runtime:** `Java` (or Docker)
-   * **Build Command:** `./mvnw clean package -DskipTests`
-   * **Start Command:** `java -jar target/event-management-backend-1.0.0.jar`
-4. In the **Environment Variables** section on Render, add:
-   * `DB_URL` = Your Supabase JDBC URI (`jdbc:postgresql://...`)
-   * `DB_USERNAME` = `postgres.YOUR_PROJECT_REF`
-   * `DB_PASSWORD` = Your Supabase DB password
-   * `JWT_SECRET` = A strong random 32+ character key
-   * `CORS_ALLOWED_ORIGINS` = Your Vercel frontend URL (e.g. `https://college-club.vercel.app`)
-   * `ADMIN_USERNAME` = Your production admin username
-   * `ADMIN_PASSWORD` = A strong production admin password
-5. Click **Create Web Service**. Render will assign a public URL (e.g. `https://college-club-backend.onrender.com`).
+Campus Nexus incorporates defense-in-depth security hardening across the entire application lifecycle:
+
+- **Stateless Authentication:** HS256 algorithm enforcement, claims verification (`iss=campus-nexus`, `aud=campus-nexus-api`), and tamper rejection.
+- **Fail-Closed Secrets:** Application will not start if `JWT_SECRET` is missing, empty, or shorter than 256 bits (32 bytes).
+- **Role-Based Authorization:** Method-level `@PreAuthorize("hasAuthority('ROLE_ADMIN')")` protects administrative mutation endpoints.
+- **Brute-Force & Abuse Defense:** In-memory token bucket rate limiting on sensitive routes (5 attempts/min on `/api/auth/login`, 10 attempts/min on `/api/events/*/registrations`) returning HTTP 429 with `Retry-After`.
+- **Capacity Race Condition Mitigation:** Event registration uses pessimistic write locking (`@Lock(LockModeType.PESSIMISTIC_WRITE)`) on event rows to eliminate Time-of-Check to Time-of-Use (TOCTOU) concurrency oversubscription.
+- **HTTP Security Headers:** Content-Security-Policy (CSP), HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy`.
+- **Exception Sanitization:** Unhandled errors return structured JSON error envelopes (`ErrorResponse`) without leaking stack traces, database credentials, or internal file paths.
 
 ---
 
-### B. Deploy React Frontend to Vercel
-1. Create a free account on [vercel.com](https://vercel.com).
-2. Click **Add New Project** and import your GitHub repository.
-3. Configure settings:
-   * **Root Directory:** Select `frontend`
-   * **Framework Preset:** `Vite`
-   * **Build Command:** `npm run build`
-   * **Output Directory:** `dist`
-4. In the **Environment Variables** section on Vercel, add:
-   * `VITE_API_URL` = `https://college-club-backend.onrender.com/api` (your deployed Render API URL)
-5. Click **Deploy**. Vercel will build and launch your site with a custom `.vercel.app` URL.
+## Automated Testing
+
+### Backend Unit & Integration Tests (JUnit 5)
+
+The backend includes a comprehensive, automated test suite covering all critical security and business logic modules:
+
+```bash
+cd backend
+./mvnw test
+```
+
+| Test Class | Verifications |
+| :--- | :--- |
+| `JwtUtilTest` | Token generation, validation, expiration detection, tampered signature rejection, algorithm pinning, fail-closed key validation |
+| `RateLimitingFilterTest` | IP token bucket thresholds on auth & registrations, HTTP 429 response formatting, unthrottled GET routes |
+| `SupabaseStorageServiceTest` | Magic byte detection (JPEG, PNG, WebP), SVG script rejection, HTML spoofing rejection, oversized file rejection (>5MB) |
+| `RegistrationServiceTest` | Valid registration, registration closed handling, capacity limit boundary enforcement under pessimistic lock, duplicate email rejection |
+| `HealthControllerTest` | Service uptime and readiness verification |
+
+### Frontend Build & Linting
+
+```bash
+cd frontend
+
+# Code style and syntax linting
+npm run lint
+
+# TypeScript type check and production bundling
+npm run build
+```
 
 ---
 
-### C. Configuring CORS in Production
-Once your Vercel frontend is deployed:
-1. Go back to your Render Dashboard ➔ Environment Variables.
-2. Update `CORS_ALLOWED_ORIGINS` to match your Vercel URL:
-   ```env
-   CORS_ALLOWED_ORIGINS=https://your-club-app.vercel.app
-   ```
-3. Save changes. Render will automatically redeploy with the updated CORS policy.
+## Production Deployment
+
+Campus Nexus is configured for zero-downtime, simple deployment across three managed cloud platforms:
+
+```
+ [ Client Browser ]
+        │
+        ▼ (HTTPS)
+ [ Vercel Frontend ] ──────(REST / HTTPS)──────► [ Render Backend API ]
+ (React 19 + Vite SPA)                           (Spring Boot 3.3.4 / Java 21)
+                                                       │            │
+                                         (JDBC + SSL)  │            │ (HTTP REST / API Key)
+                                                       ▼            ▼
+                                             [ Supabase Postgres ] [ Supabase Storage ]
+                                             (Port 5432 / 6543)    (Bucket: SDMS)
+```
+
+1. **Database & Storage:** Set up a project on [Supabase](https://supabase.com). Create the public `SDMS` bucket and copy the Transaction Pooler URI.
+2. **Backend API:** Connect repository to [Render](https://render.com) as a Web Service. Set Root Directory to `backend`, Build Command to `./mvnw clean package -DskipTests`, Start Command to `java -jar target/app.jar`, and Health Check to `/api/health`. Add the 4 core environment variables.
+3. **Frontend:** Connect repository to [Vercel](https://vercel.com). Set Root Directory to `frontend`, Framework to `Vite`, and add `VITE_API_URL` pointing to your Render backend URL.
+4. **Final Sync:** Update `CORS_ALLOWED_ORIGINS` on Render with your assigned Vercel URL.
+
+👉 **For the complete step-by-step production walkthrough, read [`DEPLOYMENT_GUIDE.md`](file:///c:/Users/idonp/OneDrive/Desktop/EventMangement/DEPLOYMENT_GUIDE.md).**
 
 ---
 
-## 14. Troubleshooting & Common Mistakes
+## Contributing
 
-| Problem | Cause | Solution |
-| :--- | :--- | :--- |
-| **Backend fails to connect to database** | Missing or incorrect Supabase credentials in `backend/.env` | Verify your Supabase DB password and ensure `?sslmode=require` is present at the end of `DB_URL`. |
-| **`mvn` is not recognized error** | Maven is not installed in Windows PATH | Run `start.bat` or use `.\mvnw.cmd spring-boot:run` in the `backend/` directory. |
-| **Frontend displays "Unable to connect to the server"** | Backend is not running or `VITE_API_URL` is mismatched | Ensure backend is running on port 8080 and `frontend/.env` has `VITE_API_URL=http://localhost:8080/api`. |
-| **CORS blocked by browser** | Frontend origin is not listed in `CORS_ALLOWED_ORIGINS` | Check `backend/.env` and ensure `http://localhost:5173` is included. |
-| **Admin login says "Invalid credentials"** | Using wrong password or default was changed | Check `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `backend/.env`. Default is `admin` / `Admin@12345`. |
-| **Refreshing page on Vercel returns 404** | Single-page application routes not rewritten to `index.html` | The repository already includes `frontend/vercel.json` with rewrite rules to prevent this. |
-
----
-
-## 15. Future Improvements
-
-* Email confirmation notifications using SendGrid or AWS SES upon registration.
-* QR Code generation on event registration confirmation for fast campus check-in.
-* Multiple user permission tiers (e.g. Faculty Advisor vs. Student Organizer).
-* Calendar integration (.ics export to Google Calendar and Apple Calendar).
+1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).
+2. Verify all tests pass locally before committing:
+   - Backend: `./mvnw clean test`
+   - Frontend: `npm run lint && npm run build`
+3. Commit changes (`git commit -m "feat: add amazing feature"`).
+4. Push to branch (`git push origin feature/amazing-feature`).
+5. Open a Pull Request.
 
 ---
 
-&copy; 2026 Campus Nexus College Club. Built for collegiate innovation.
+## License
+
+This project is licensed under the MIT License — see the LICENSE file for details.
