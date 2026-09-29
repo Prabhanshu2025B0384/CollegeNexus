@@ -31,7 +31,6 @@
    - [Smart Client-Side Caching & Optimistic UI](#1-smart-client-side-caching--optimistic-ui-tanstack-query-v5)
    - [Advanced Security & Data Integrity](#2-advanced-security--data-integrity)
    - [Cloud S3 Media Pipeline with Auto-Cleanup](#3-cloud-s3-media-pipeline-with-auto-cleanup)
-   - [Polished UX, Scroll Restoration & Motion](#4-polished-ux-scroll-restoration--motion-design)
 4. [Technology Stack](#technology-stack)
 5. [REST API Endpoints](#rest-api-endpoints)
 6. [Environment Configuration Reference](#environment-configuration-reference)
@@ -123,15 +122,6 @@ The backend is hardened with enterprise security practices:
 - **Supabase S3 Object Storage:** Event banner images are uploaded directly to an S3-compatible cloud bucket rather than bloating the application database.
 - **File Validation & Safe Naming:** Uploads are strictly validated against allowed image MIME types (WebP, PNG, JPEG, GIF) with size restrictions and stored with cryptographically random UUID keys to prevent path traversal and collision.
 - **Automated Orphan Cleanup:** Whenever an event is deleted or its banner image is replaced with a new one, the backend automatically issues an S3 delete request to purge the old image, preventing orphaned files and unnecessary storage costs.
-
-### 4. Polished UX, Scroll Restoration & Motion Design
-- **Smart Global Route Scroll Restoration:**
-  - When clicking any link to navigate to a new route, the browser immediately scrolls to top (`0px`) instantly, avoiding jarring visual sliding effects.
-  - When using the browser **Back** or **Forward** buttons, the application restores the user's exact prior scroll position down the events list.
-  - Opening or closing modal dialogs leaves the background scroll position untouched.
-- **Restrained Motion System:** Micro-interactions run on hardware-accelerated CSS properties (`opacity`, `transform`) using a unified 140ms–250ms motion scale (card elevation of `-2px`, button presses, modal scale-in from `0.98` to `1.0`).
-- **Accessibility First (`prefers-reduced-motion`):** Fully respects user OS accessibility settings, cleanly disabling non-essential motion when reduced motion is preferred.
-- **Cold-Start Awareness:** When deployed on free-tier cloud platforms (such as Render), an unobtrusive status banner informs the user if the server is waking from inactivity, preventing confusion during spin-up.
 
 ---
 
