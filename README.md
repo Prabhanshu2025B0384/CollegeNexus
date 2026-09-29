@@ -31,6 +31,7 @@
    - [Smart Client-Side Caching & Optimistic UI](#1-smart-client-side-caching--optimistic-ui-tanstack-query-v5)
    - [Advanced Security & Data Integrity](#2-advanced-security--data-integrity)
    - [Cloud S3 Media Pipeline with Auto-Cleanup](#3-cloud-s3-media-pipeline-with-auto-cleanup)
+   - [Cold-Start Server Wakeup Detection](#4-cold-start-server-wakeup-detection)
 4. [Technology Stack](#technology-stack)
 5. [REST API Endpoints](#rest-api-endpoints)
 6. [Environment Configuration Reference](#environment-configuration-reference)
@@ -122,6 +123,11 @@ The backend is hardened with enterprise security practices:
 - **Supabase S3 Object Storage:** Event banner images are uploaded directly to an S3-compatible cloud bucket rather than bloating the application database.
 - **File Validation & Safe Naming:** Uploads are strictly validated against allowed image MIME types (WebP, PNG, JPEG, GIF) with size restrictions and stored with cryptographically random UUID keys to prevent path traversal and collision.
 - **Automated Orphan Cleanup:** Whenever an event is deleted or its banner image is replaced with a new one, the backend automatically issues an S3 delete request to purge the old image, preventing orphaned files and unnecessary storage costs.
+
+### 4. Cold-Start Server Wakeup Detection
+- **Cloud Sleep-State Awareness:** In production environments hosting the backend on free-tier infrastructure (such as Render or Fly.io), backend instances automatically enter sleep mode after 15 minutes of inactivity.
+- **Dynamic 3.5s Threshold Detection:** The frontend API client automatically monitors in-flight request duration; if a request takes longer than 3.5 seconds, it fires an event to render an animated status banner informing visitors that the backend server is spinning up.
+- **Graceful Extended Timeout (45s):** Replaces short browser timeouts with a 45-second threshold, ensuring requests do not artificially abort while the server is waking up, and smoothly dismisses the banner once the service responds.
 
 ---
 
