@@ -19,6 +19,13 @@ public class CollegeClubApplication {
     private static final Logger logger = LoggerFactory.getLogger(CollegeClubApplication.class);
 
     public static void main(String[] args) {
+        // Render dynamically injects PORT; bind server.port immediately so Tomcat listens on the right port
+        String renderPort = System.getenv("PORT");
+        if (renderPort != null && !renderPort.isBlank()) {
+            System.setProperty("server.port", renderPort.trim());
+            System.setProperty("PORT", renderPort.trim());
+            logger.info("Bound server.port to dynamic Render PORT: {}", renderPort.trim());
+        }
         loadDotenv();
         configureDatabaseUrl();
         SpringApplication.run(CollegeClubApplication.class, args);
@@ -165,8 +172,18 @@ public class CollegeClubApplication {
                         // Derive SUPABASE_URL if host or username contains Supabase project reference
                         deriveSupabaseUrlIfOmitted(host, username);
 
-                        // Safe standalone preflight diagnostic (DNS, TCP, direct PostgreSQL JDBC)
-                        performPreflightDiagnostic(host, port, database, username, password, finalJdbcUrl);
+                        // Safe standalone preflight diagnostic (asynchronous & SSL-aware, never blocks startup)
+                        final String diagHost = host;
+                        final int diagPort = port;
+                        final String diagDb = database;
+                        final String diagUser = username;
+                        final String diagPass = password;
+                        final String diagJdbcUrl = finalJdbcUrl;
+                        Thread diagnosticThread = new Thread(() -> {
+                            performPreflightDiagnostic(diagHost, diagPort, diagDb, diagUser, diagPass, diagJdbcUrl);
+                        }, "supabase-diagnostic");
+                        diagnosticThread.setDaemon(true);
+                        diagnosticThread.start();
                     }
                 } catch (Exception ex) {
                     logger.error("Failed to parse DATABASE_URL: {}", ex.getMessage());
@@ -176,7 +193,7 @@ public class CollegeClubApplication {
     }
 
     private static void performPreflightDiagnostic(String host, int port, String database, String username, String password, String jdbcUrl) {
-        logger.info("[DIAGNOSTIC] === Starting Database Preflight Diagnostic ===");
+        logger.info("[DIAGNOSTIC] === Starting Asynchronous Database Preflight Diagnostic ===");
         // 1. DNS Resolution
         try {
             java.net.InetAddress[] addrs = java.net.InetAddress.getAllByName(host);
@@ -190,18 +207,28 @@ public class CollegeClubApplication {
             }
             logger.info("[DIAGNOSTIC] DNS Resolution: {} IP(s) found (IPv4: {}, IPv6: {}) -> [{}]", addrs.length, v4, v6, sb);
         } catch (Exception e) {
-            logger.error("[DIAGNOSTIC] DNS Resolution FAILED for {}: {}", host, e.getMessage());
+            logger.warn("[DIAGNOSTIC] DNS Resolution note for {}: {}", host, e.getMessage());
         }
 
-        // 2. TCP Connectivity
-        long tcpStart = System.currentTimeMillis();
+        // 2. SSL-Aware Protocol Probe (sends PostgreSQL SSLRequest instead of raw non-SSL socket)
+        long probeStart = System.currentTimeMillis();
         try (java.net.Socket s = new java.net.Socket()) {
-            s.connect(new java.net.InetSocketAddress(host, port), 5000);
-            long tcpDuration = System.currentTimeMillis() - tcpStart;
-            logger.info("[DIAGNOSTIC] TCP Connectivity: SUCCESS to {}:{} in {} ms", host, port, tcpDuration);
+            s.connect(new java.net.InetSocketAddress(host, port), 4000);
+            s.setSoTimeout(4000);
+            java.io.OutputStream out = s.getOutputStream();
+            // PostgreSQL SSLRequest packet: length 8, code 80877103 (0x04D2162F)
+            out.write(new byte[] { 0, 0, 0, 8, 4, (byte) 210, 22, 47 });
+            out.flush();
+            int response = s.getInputStream().read();
+            long duration = System.currentTimeMillis() - probeStart;
+            if (response == 'S') {
+                logger.info("[DIAGNOSTIC] Supabase SSL Probe: SUCCESS (SSL supported) in {} ms", duration);
+            } else {
+                logger.warn("[DIAGNOSTIC] Supabase SSL Probe: Server responded with byte '{}' ({}) in {} ms", (char) response, response, duration);
+            }
         } catch (Exception e) {
-            long tcpDuration = System.currentTimeMillis() - tcpStart;
-            logger.error("[DIAGNOSTIC] TCP Connectivity: FAILED to {}:{} after {} ms - {}", host, port, tcpDuration, e.getMessage());
+            long duration = System.currentTimeMillis() - probeStart;
+            logger.warn("[DIAGNOSTIC] Supabase SSL Probe note ({} ms): {}", duration, e.getMessage());
         }
 
         // 3. Direct PostgreSQL JDBC Check (No Spring, No Hikari)
@@ -210,8 +237,9 @@ public class CollegeClubApplication {
             java.util.Properties props = new java.util.Properties();
             props.setProperty("user", username);
             props.setProperty("password", password);
+            props.setProperty("ssl", "true");
             props.setProperty("sslmode", "require");
-            props.setProperty("connectTimeout", "10");
+            props.setProperty("connectTimeout", "5");
 
             try (java.sql.Connection conn = java.sql.DriverManager.getConnection(jdbcUrl, props);
                  java.sql.Statement stmt = conn.createStatement();
@@ -228,13 +256,7 @@ public class CollegeClubApplication {
             }
         } catch (Exception e) {
             long jdbcDuration = System.currentTimeMillis() - jdbcStart;
-            logger.error("[DIAGNOSTIC] Direct PostgreSQL JDBC: FAILED after {} ms: {} - {}",
-                    jdbcDuration, e.getClass().getName(), e.getMessage());
-            Throwable cause = e.getCause();
-            while (cause != null) {
-                logger.error("[DIAGNOSTIC]   Caused by: {} - {}", cause.getClass().getName(), cause.getMessage());
-                cause = cause.getCause();
-            }
+            logger.warn("[DIAGNOSTIC] Direct PostgreSQL JDBC check encountered: {} (in {} ms)", e.getMessage(), jdbcDuration);
         }
         logger.info("[DIAGNOSTIC] === Database Preflight Diagnostic Completed ===");
     }

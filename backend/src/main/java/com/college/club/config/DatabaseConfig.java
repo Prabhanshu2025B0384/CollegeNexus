@@ -66,13 +66,21 @@ public class DatabaseConfig {
                     localUrl.contains("@") ? localUrl.substring(localUrl.indexOf('@') + 1) : localUrl);
         }
 
-        // Conservative HikariCP pool configuration
+        // Streamlined HikariCP pool configuration optimized for Supabase Pooler & fast boot
         config.setMaximumPoolSize(10);
-        config.setMinimumIdle(2);
-        config.setConnectionTimeout(30_000);
-        config.setValidationTimeout(5_000);
+        config.setMinimumIdle(1);
+        config.setConnectionTimeout(15_000);
+        config.setValidationTimeout(3_000);
+        config.setInitializationFailTimeout(15_000);
         config.setIdleTimeout(300_000);
         config.setMaxLifetime(600_000);
+
+        // Explicit PostgreSQL SSL & network driver properties
+        config.addDataSourceProperty("ssl", "true");
+        config.addDataSourceProperty("sslmode", "require");
+        config.addDataSourceProperty("tcpKeepAlive", "true");
+        config.addDataSourceProperty("connectTimeout", "10");
+        config.addDataSourceProperty("socketTimeout", "30");
 
         return new HikariDataSource(config);
     }

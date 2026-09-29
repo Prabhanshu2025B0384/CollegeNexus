@@ -15,8 +15,6 @@ services:
     dockerfilePath: Dockerfile
     healthCheckPath: /api/health
     envVars:
-      - key: PORT
-        value: 8080
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
