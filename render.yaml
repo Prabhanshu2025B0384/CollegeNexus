@@ -1,25 +1,22 @@
 # ==============================================================================
 # Campus Nexus - Render Blueprint Deployment Configuration
 # ==============================================================================
-# This configuration deploys the Spring Boot 3 API on Render.
+# Deploys the Spring Boot 3 / Java 21 REST API as a Docker Web Service on Render.
 # In the Render Dashboard, connect this repository as a Web Service.
 # ==============================================================================
 
 services:
   - type: web
     name: campus-nexus-backend
-    runtime: java
+    runtime: docker
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: ./mvnw clean package -DskipTests
-    startCommand: java -jar target/app.jar
+    dockerfilePath: Dockerfile
     healthCheckPath: /api/health
     envVars:
       - key: PORT
         value: 8080
-      - key: JAVA_VERSION
-        value: 21
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET

@@ -63,26 +63,30 @@ If you wish to seed demo events in a staging/testing database:
 
 ---
 
-## Part B — Render (Spring Boot Backend API)
+## Part B — Render (Spring Boot Backend API via Docker)
+
+> **Why Docker?** Render does not have a native "Java" runtime in its standard environment dropdown. Render natively supports Java 21 Spring Boot applications via **Docker**. A multi-stage [`backend/Dockerfile`](file:///c:/Users/idonp/OneDrive/Desktop/EventMangement/backend/Dockerfile) has been configured that compiles the application with OpenJDK 21 & Maven and runs it on a lightweight, secure Eclipse Temurin JRE 21 container.
 
 ### 1. Create Web Service
 1. Log in to [Render](https://render.com).
 2. Click **New +** → **Web Service**.
-3. Connect your GitHub repository.
-4. Configure the service settings:
+3. Connect your GitHub repository (`Prabhanshu2025B0384/CollegeNexus`).
+4. In the service setup screen, configure the following:
 
-| Setting | Value |
-| :--- | :--- |
-| **Name** | `campus-nexus-api` (or your preferred name) |
-| **Region** | Same region as Supabase (e.g. `Singapore` or `Oregon`) |
-| **Root Directory** | `backend` |
-| **Runtime** | `Java` |
-| **Build Command** | `./mvnw clean package -DskipTests` |
-| **Start Command** | `java -jar target/app.jar` |
-| **Instance Type** | Free / Starter |
+| Setting | Value | Notes |
+| :--- | :--- | :--- |
+| **Name** | `campus-nexus-api` | Or any name you prefer |
+| **Region** | Same as Supabase (e.g. `Oregon` or `Singapore`) | Minimizes database network latency |
+| **Root Directory** | `backend` | **Important:** Tells Render to build from the backend folder |
+| **Language / Environment** | `Docker` | **Select "Docker"** (NOT Node/Python/Go) |
+| **Dockerfile Path** | `Dockerfile` | Relative to the `backend` Root Directory |
+| **Docker Build Context Directory** | `.` | Current directory inside `backend` |
+| **Instance Type** | Free / Starter | 512MB RAM minimum |
+
+> **If you leave Root Directory empty:** Set **Dockerfile Path** to `backend/Dockerfile` and **Docker Build Context Directory** to `backend`.
 
 ### 2. Configure Environment Variables on Render
-Under the **Environment** tab of your Web Service, add the following minimum environment variables:
+Under the **Environment** tab of your Web Service, add the following environment variables:
 
 | Variable Name | Required? | Description / Format | Secret? |
 | :--- | :--- | :--- | :--- |
@@ -92,23 +96,25 @@ Under the **Environment** tab of your Web Service, add the following minimum env
 | `ADMIN_PASSWORD` | **Yes** | Secure password for initial admin user creation on first boot | **YES** |
 | `ADMIN_USERNAME` | No (default: `admin@gmail.com`) | Username for administrative login | No |
 | `SUPABASE_SERVICE_KEY` | Conditional | Required only if event banner image uploads to Supabase Storage are used | **YES** |
-| `PORT` | Auto | Render injects this automatically (defaults to `8080`) | No |
+| `PORT` | Auto | Render injects this automatically (e.g. `10000`); Tomcat binds dynamically via `server.port=${PORT:8080}` | No |
 | `SEED_SAMPLE_DATA` | No (default: `false`) | Keep `false` in production to prevent fake dummy data | No |
 
 > **Note on `SUPABASE_URL`:** The backend automatically derives `SUPABASE_URL` from your `DATABASE_URL` host/username (`https://[PROJECT_REF].supabase.co`). You do not need to configure it manually unless using a custom domain.
 
-### 3. Health Check
+### 3. Health Check Path
 In Render Web Service settings under **Advanced** → **Health Check Path**, enter:
 ```
 /api/health
 ```
-Render will probe this endpoint for zero-downtime deployments.
+Render will probe this endpoint for zero-downtime health verification before routing live traffic.
 
 ### 4. Deploy and Verify
 1. Click **Create Web Service**.
-2. Monitor deployment logs. You should see:
-   - Maven compiling and packaging `target/app.jar`
-   - Tomcat starting on port injected by Render
+2. Monitor deployment logs in Render. You will observe:
+   - Docker building Stage 1 (Maven downloading dependencies and compiling `app.jar`)
+   - Docker building Stage 2 (copying `app.jar` into minimal Eclipse Temurin JRE 21 image)
+   - Container starting as unprivileged user `spring:spring`
+   - Tomcat starting on the dynamic `PORT` assigned by Render
    - `Admin user '...' successfully seeded.`
    - `Sample event/registration seeding is disabled (app.seed.sample-data=false). Production database will remain unpolluted.`
 3. Once deployed, note your Render service URL (e.g. `https://campus-nexus-api.onrender.com`).

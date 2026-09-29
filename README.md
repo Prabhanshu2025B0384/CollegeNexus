@@ -88,7 +88,9 @@ Campus-Nexus/
 │   │       ├── controller/          # HealthController unit test
 │   │       ├── security/            # JwtUtil and RateLimitingFilter unit tests
 │   │       └── service/             # RegistrationService and SupabaseStorageService tests
+│   ├── .dockerignore                # Excludes target/ and .env from Docker build context
 │   ├── .env.example                 # Backend environment variable template
+│   ├── Dockerfile                   # Multi-stage Docker build for Java 21 / Spring Boot 3
 │   ├── mvnw / mvnw.cmd              # Maven wrapper scripts
 │   └── pom.xml                      # Maven project configuration (Java 21, Spring Boot 3.3.4)
 ├── frontend/
@@ -309,7 +311,7 @@ Campus Nexus is configured for zero-downtime, simple deployment across three man
 ```
 
 1. **Database & Storage:** Set up a project on [Supabase](https://supabase.com). Create the public `SDMS` bucket and copy the Transaction Pooler URI.
-2. **Backend API:** Connect repository to [Render](https://render.com) as a Web Service. Set Root Directory to `backend`, Build Command to `./mvnw clean package -DskipTests`, Start Command to `java -jar target/app.jar`, and Health Check to `/api/health`. Add the 4 core environment variables.
+2. **Backend API:** Connect repository to [Render](https://render.com) as a Web Service. Select **Docker** environment, set Root Directory to `backend`, Dockerfile Path to `Dockerfile`, and Health Check to `/api/health`. Add the 4 core environment variables.
 3. **Frontend:** Connect repository to [Vercel](https://vercel.com). Set Root Directory to `frontend`, Framework to `Vite`, and add `VITE_API_URL` pointing to your Render backend URL.
 4. **Final Sync:** Update `CORS_ALLOWED_ORIGINS` on Render with your assigned Vercel URL.
 
