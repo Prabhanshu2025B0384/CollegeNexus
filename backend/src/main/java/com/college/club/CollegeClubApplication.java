@@ -19,7 +19,6 @@ public class CollegeClubApplication {
     private static final Logger logger = LoggerFactory.getLogger(CollegeClubApplication.class);
 
     public static void main(String[] args) {
-        System.setProperty("java.net.preferIPv4Stack", "true");
         loadDotenv();
         configureDatabaseUrl();
         SpringApplication.run(CollegeClubApplication.class, args);
@@ -165,12 +164,79 @@ public class CollegeClubApplication {
 
                         // Derive SUPABASE_URL if host or username contains Supabase project reference
                         deriveSupabaseUrlIfOmitted(host, username);
+
+                        // Safe standalone preflight diagnostic (DNS, TCP, direct PostgreSQL JDBC)
+                        performPreflightDiagnostic(host, port, database, username, password, finalJdbcUrl);
                     }
                 } catch (Exception ex) {
                     logger.error("Failed to parse DATABASE_URL: {}", ex.getMessage());
                 }
             }
         }
+    }
+
+    private static void performPreflightDiagnostic(String host, int port, String database, String username, String password, String jdbcUrl) {
+        logger.info("[DIAGNOSTIC] === Starting Database Preflight Diagnostic ===");
+        // 1. DNS Resolution
+        try {
+            java.net.InetAddress[] addrs = java.net.InetAddress.getAllByName(host);
+            StringBuilder sb = new StringBuilder();
+            int v4 = 0, v6 = 0;
+            for (java.net.InetAddress a : addrs) {
+                if (a instanceof java.net.Inet4Address) v4++;
+                else if (a instanceof java.net.Inet6Address) v6++;
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(a.getHostAddress());
+            }
+            logger.info("[DIAGNOSTIC] DNS Resolution: {} IP(s) found (IPv4: {}, IPv6: {}) -> [{}]", addrs.length, v4, v6, sb);
+        } catch (Exception e) {
+            logger.error("[DIAGNOSTIC] DNS Resolution FAILED for {}: {}", host, e.getMessage());
+        }
+
+        // 2. TCP Connectivity
+        long tcpStart = System.currentTimeMillis();
+        try (java.net.Socket s = new java.net.Socket()) {
+            s.connect(new java.net.InetSocketAddress(host, port), 5000);
+            long tcpDuration = System.currentTimeMillis() - tcpStart;
+            logger.info("[DIAGNOSTIC] TCP Connectivity: SUCCESS to {}:{} in {} ms", host, port, tcpDuration);
+        } catch (Exception e) {
+            long tcpDuration = System.currentTimeMillis() - tcpStart;
+            logger.error("[DIAGNOSTIC] TCP Connectivity: FAILED to {}:{} after {} ms - {}", host, port, tcpDuration, e.getMessage());
+        }
+
+        // 3. Direct PostgreSQL JDBC Check (No Spring, No Hikari)
+        long jdbcStart = System.currentTimeMillis();
+        try {
+            java.util.Properties props = new java.util.Properties();
+            props.setProperty("user", username);
+            props.setProperty("password", password);
+            props.setProperty("sslmode", "require");
+            props.setProperty("connectTimeout", "10");
+
+            try (java.sql.Connection conn = java.sql.DriverManager.getConnection(jdbcUrl, props);
+                 java.sql.Statement stmt = conn.createStatement();
+                 java.sql.ResultSet rs = stmt.executeQuery("SELECT 1 AS alive, version() AS pg_version")) {
+                long jdbcDuration = System.currentTimeMillis() - jdbcStart;
+                if (rs.next()) {
+                    String version = rs.getString("pg_version");
+                    String shortVersion = (version != null && version.contains(" on "))
+                            ? version.substring(0, version.indexOf(" on "))
+                            : version;
+                    logger.info("[DIAGNOSTIC] Direct PostgreSQL JDBC: SUCCESS in {} ms (Database: {}, Version: {})",
+                            jdbcDuration, database, shortVersion);
+                }
+            }
+        } catch (Exception e) {
+            long jdbcDuration = System.currentTimeMillis() - jdbcStart;
+            logger.error("[DIAGNOSTIC] Direct PostgreSQL JDBC: FAILED after {} ms: {} - {}",
+                    jdbcDuration, e.getClass().getName(), e.getMessage());
+            Throwable cause = e.getCause();
+            while (cause != null) {
+                logger.error("[DIAGNOSTIC]   Caused by: {} - {}", cause.getClass().getName(), cause.getMessage());
+                cause = cause.getCause();
+            }
+        }
+        logger.info("[DIAGNOSTIC] === Database Preflight Diagnostic Completed ===");
     }
 
     private static void deriveSupabaseUrlIfOmitted(String host, String username) {
