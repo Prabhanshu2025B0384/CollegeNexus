@@ -11,7 +11,8 @@ import java.time.LocalDateTime;
     },
     indexes = {
         @Index(name = "idx_registrations_event_id", columnList = "event_id"),
-        @Index(name = "idx_registrations_email", columnList = "email")
+        @Index(name = "idx_registrations_email", columnList = "email"),
+        @Index(name = "idx_registrations_registered_at", columnList = "registered_at")
     }
 )
 public class Registration {

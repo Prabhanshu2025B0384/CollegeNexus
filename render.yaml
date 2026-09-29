@@ -27,7 +27,15 @@ services:
         value: admin@gmail.com
       - key: SEED_SAMPLE_DATA
         value: "false"
-      - key: SUPABASE_SECRET_KEY
-        sync: false
       - key: SUPABASE_STORAGE_BUCKET
         value: SDMS
+      - key: SUPABASE_S3_ENDPOINT
+        value: https://vshsmnrzeusimlcemzhc.storage.supabase.co/storage/v1/s3
+      - key: SUPABASE_S3_REGION
+        value: ap-southeast-1
+      - key: SUPABASE_S3_ACCESS_KEY
+        sync: false
+      - key: SUPABASE_S3_SECRET_KEY
+        sync: false
+      - key: SUPABASE_URL
+        value: https://vshsmnrzeusimlcemzhc.supabase.co

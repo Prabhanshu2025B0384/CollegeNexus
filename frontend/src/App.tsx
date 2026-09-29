@@ -1,30 +1,47 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { HomePage } from './pages/HomePage';
 import { EventsPage } from './pages/EventsPage';
 import { EventDetailsPage } from './pages/EventDetailsPage';
-import { AdminLoginPage } from './pages/AdminLoginPage';
-import { AdminDashboardPage } from './pages/AdminDashboardPage';
-import { AdminEventsPage } from './pages/AdminEventsPage';
-import { AdminRegistrationsPage } from './pages/AdminRegistrationsPage';
+import { LoadingSpinner } from './components/LoadingSpinner';
+import { ColdStartBanner } from './components/ColdStartBanner';
+import { ScrollToTop } from './components/ScrollToTop';
 
-export const App: React.FC = () => {
+// Route Code Splitting: Lazy-load admin modules to keep public student bundle lightweight
+const AdminLoginPage = lazy(() =>
+  import('./pages/AdminLoginPage').then((m) => ({ default: m.AdminLoginPage }))
+);
+const AdminDashboardPage = lazy(() =>
+  import('./pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage }))
+);
+const AdminEventsPage = lazy(() =>
+  import('./pages/AdminEventsPage').then((m) => ({ default: m.AdminEventsPage }))
+);
+const AdminRegistrationsPage = lazy(() =>
+  import('./pages/AdminRegistrationsPage').then((m) => ({ default: m.AdminRegistrationsPage }))
+);
+
+const AppContent: React.FC = () => {
+  const location = useLocation();
+
   return (
-    <AuthProvider>
-      <Router>
-        <div className="app-container">
-          <Navbar />
-          <main className="main-content">
+    <div className="app-container">
+      <ScrollToTop />
+      <ColdStartBanner />
+      <Navbar />
+      <main className="main-content">
+        <div key={location.pathname} className="route-page-container">
+          <Suspense fallback={<LoadingSpinner message="Loading campus portal..." />}>
             <Routes>
               {/* Public Student Routes */}
               <Route path="/" element={<HomePage />} />
               <Route path="/events" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventDetailsPage />} />
 
-              {/* Admin Routes */}
+              {/* Lazy-Loaded Admin Routes */}
               <Route path="/admin/login" element={<AdminLoginPage />} />
               <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
@@ -34,12 +51,23 @@ export const App: React.FC = () => {
               {/* Catch-all fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-          </main>
-          <Footer />
+          </Suspense>
         </div>
+      </main>
+      <Footer />
+    </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <Router>
+        <AppContent />
       </Router>
     </AuthProvider>
   );
 };
 
 export default App;
+

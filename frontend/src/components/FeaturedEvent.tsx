@@ -9,20 +9,32 @@ interface FeaturedEventProps {
 }
 
 export const FeaturedEvent: React.FC<FeaturedEventProps> = ({ event, onRegisterClick }) => {
-  const isPast = useMemo(() => {
-    return new Date(event.eventDate) < new Date(new Date().setHours(0, 0, 0, 0));
-  }, [event.eventDate]);
+  const eventDate = event?.eventDate;
 
-  const canRegister = event.registrationOpen && !isPast;
+  const isPast = useMemo(() => {
+    if (!eventDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(eventDate).getTime() < today.getTime();
+  }, [eventDate]);
 
   const formattedDate = useMemo(() => {
-    return new Date(event.eventDate).toLocaleDateString('en-US', {
+    if (!eventDate) return 'Date TBD';
+    return new Date(eventDate).toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
       year: 'numeric',
     });
-  }, [event.eventDate]);
+  }, [eventDate]);
+
+  if (!event || !event.id) {
+    return null;
+  }
+
+  const category = event.category || 'General';
+  const categoryClass = category.toLowerCase();
+  const canRegister = Boolean(event.registrationOpen && !isPast);
 
   return (
     <section className="featured-banner-wrapper" id="featured-section">
@@ -33,13 +45,13 @@ export const FeaturedEvent: React.FC<FeaturedEventProps> = ({ event, onRegisterC
               <Sparkles size={14} className="sparkle-icon" />
               Featured Event of the Month
             </span>
-            <span className={`badge badge-${event.category.toLowerCase()}`}>
-              {event.category}
+            <span className={`badge badge-${categoryClass}`}>
+              {category}
             </span>
           </div>
 
           <h2 className="featured-title">
-            <Link to={`/events/${event.id}`}>{event.title}</Link>
+            <Link to={`/events/${event.id}`}>{event.title || 'Featured Event'}</Link>
           </h2>
 
           <div className="featured-meta-grid">
@@ -54,14 +66,14 @@ export const FeaturedEvent: React.FC<FeaturedEventProps> = ({ event, onRegisterC
               <Clock size={18} className="meta-svg" />
               <div>
                 <span className="meta-label">Time</span>
-                <span className="meta-val">{event.startTime} - {event.endTime}</span>
+                <span className="meta-val">{event.startTime || '10:00 AM'} - {event.endTime || '04:00 PM'}</span>
               </div>
             </div>
             <div className="featured-meta-item">
               <MapPin size={18} className="meta-svg" />
               <div>
                 <span className="meta-label">Venue</span>
-                <span className="meta-val">{event.venue}</span>
+                <span className="meta-val">{event.venue || 'Campus Venue'}</span>
               </div>
             </div>
             {event.registrationCount !== undefined && (
@@ -107,6 +119,13 @@ export const FeaturedEvent: React.FC<FeaturedEventProps> = ({ event, onRegisterC
             }
             alt={event.title}
             className="featured-cover-img"
+            decoding="async"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('photo-1504384308090-c894fdcc538d')) {
+                target.src = 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1200&q=80';
+              }
+            }}
           />
           <div className="featured-img-overlay" />
         </div>
@@ -125,11 +144,12 @@ export const FeaturedEvent: React.FC<FeaturedEventProps> = ({ event, onRegisterC
           display: grid;
           grid-template-columns: 1.25fr 1fr;
           overflow: hidden;
-          transition: box-shadow var(--transition-normal);
+          transition: box-shadow var(--transition-normal), transform var(--transition-normal);
         }
 
         .featured-banner-card:hover {
           box-shadow: 0 14px 38px rgba(245, 158, 11, 0.18);
+          transform: translateY(-2px);
         }
 
         .featured-content-side {
@@ -253,6 +273,11 @@ export const FeaturedEvent: React.FC<FeaturedEventProps> = ({ event, onRegisterC
           width: 100%;
           height: 100%;
           object-fit: cover;
+          transition: transform var(--transition-normal);
+        }
+
+        .featured-banner-card:hover .featured-cover-img {
+          transform: scale(1.025);
         }
 
         .featured-img-overlay {

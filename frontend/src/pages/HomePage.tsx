@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar,
   Sparkles,
@@ -10,40 +11,52 @@ import {
   Trophy,
   Coffee,
   CheckCircle,
+  RefreshCw,
 } from 'lucide-react';
 import type { Event } from '../types';
 import { eventService } from '../services/events';
+import { queryKeys } from '../lib/queryKeys';
 import { EventCard } from '../components/EventCard';
 import { FeaturedEvent } from '../components/FeaturedEvent';
 import { RegistrationModal } from '../components/RegistrationModal';
-import { LoadingSpinner } from '../components/LoadingSpinner';
+import { EventCardSkeleton } from '../components/skeletons/EventCardSkeleton';
+import { FeaturedEventSkeleton } from '../components/skeletons/FeaturedEventSkeleton';
 
 export const HomePage: React.FC = () => {
-  const [featuredEvent, setFeaturedEvent] = useState<Event | null>(null);
-  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [selectedEventForModal, setSelectedEventForModal] = useState<Event | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const loadHomeData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [featured, upcoming] = await Promise.all([
-        eventService.getFeaturedEvent(),
-        eventService.getUpcomingEvents(6),
-      ]);
-      setFeaturedEvent(featured);
-      setUpcomingEvents(upcoming);
-    } catch (err) {
-      console.error('Failed to load homepage events', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // Parallel server-state queries with 5min staleTime
+  const {
+    data: featuredEvent,
+    isLoading: isFeaturedLoading,
+  } = useQuery({
+    queryKey: queryKeys.events.featured(),
+    queryFn: () => eventService.getFeaturedEvent(),
+    staleTime: 5 * 60 * 1000,
+  });
 
+  const {
+    data: upcomingEvents = [],
+    isLoading: isUpcomingLoading,
+    isError,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.events.upcoming(6),
+    queryFn: () => eventService.getUpcomingEvents(6),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Prefetch events list & categories for instant navigation
   useEffect(() => {
-    loadHomeData();
-  }, [loadHomeData]);
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.events.categories(),
+      queryFn: () => eventService.getCategories(),
+      staleTime: 30 * 60 * 1000,
+    });
+  }, [queryClient]);
 
   const handleOpenRegistration = (event: Event) => {
     setSelectedEventForModal(event);
@@ -101,50 +114,70 @@ export const HomePage: React.FC = () => {
       </section>
 
       <div className="page-container">
-        {isLoading ? (
-          <LoadingSpinner message="Loading club events and highlights..." />
-        ) : (
-          <>
-            {/* 2. Featured Event Section (API Driven) */}
-            {featuredEvent && (
-              <FeaturedEvent
-                event={featuredEvent}
-                onRegisterClick={handleOpenRegistration}
-              />
-            )}
+        {isError && (
+          <div className="alert alert-error" style={{ margin: '1.5rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Unable to load live events from the server. Check your connection or try again.</span>
+            <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
+              Retry
+            </button>
+          </div>
+        )}
 
-            {/* 3. Upcoming Events Section */}
-            <section className="upcoming-section">
-              <div className="section-header">
-                <div>
-                  <span className="section-tag">Mark Your Calendar</span>
-                  <h2 className="section-title">Upcoming Club Events</h2>
-                  <p className="section-subtitle">
-                    Register early to reserve your seat. Workshops and hackathons fill up rapidly!
-                  </p>
-                </div>
-                <Link to="/events" className="btn btn-secondary">
-                  View Full Schedule <ArrowRight size={16} />
-                </Link>
-              </div>
+        {/* 2. Featured Event Section (API Driven with Skeleton) */}
+        {isFeaturedLoading ? (
+          <FeaturedEventSkeleton />
+        ) : featuredEvent && featuredEvent.id ? (
+          <FeaturedEvent
+            event={featuredEvent}
+            onRegisterClick={handleOpenRegistration}
+          />
+        ) : null}
 
-              {upcomingEvents.length > 0 ? (
-                <div className="grid-3 upcoming-grid">
-                  {upcomingEvents.map((evt) => (
-                    <EventCard
-                      key={evt.id}
-                      event={evt}
-                      onRegisterClick={handleOpenRegistration}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="no-upcoming-box">
-                  <Calendar size={36} />
-                  <p>No upcoming events currently scheduled. Check back soon!</p>
-                </div>
-              )}
-            </section>
+        {/* 3. Upcoming Events Section */}
+        <section className="upcoming-section">
+          <div className="section-header">
+            <div>
+              <span className="section-tag">Mark Your Calendar</span>
+              <h2 className="section-title">
+                Upcoming Club Events
+                {isFetching && !isUpcomingLoading && (
+                  <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--gray-400)', marginLeft: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <RefreshCw size={12} className="spin-slow" /> Updating...
+                  </span>
+                )}
+              </h2>
+              <p className="section-subtitle">
+                Register early to reserve your seat. Workshops and hackathons fill up rapidly!
+              </p>
+            </div>
+            <Link to="/events" className="btn btn-secondary">
+              View Full Schedule <ArrowRight size={16} />
+            </Link>
+          </div>
+
+          {isUpcomingLoading ? (
+            <div className="grid-3 upcoming-grid">
+              <EventCardSkeleton />
+              <EventCardSkeleton />
+              <EventCardSkeleton />
+            </div>
+          ) : upcomingEvents.length > 0 ? (
+            <div className="grid-3 upcoming-grid">
+              {upcomingEvents.map((evt) => (
+                <EventCard
+                  key={evt.id}
+                  event={evt}
+                  onRegisterClick={handleOpenRegistration}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="no-upcoming-box">
+              <Calendar size={36} />
+              <p>No upcoming events currently scheduled. Check back soon!</p>
+            </div>
+          )}
+        </section>
 
             {/* 4. Club Introduction & Pillars */}
             <section className="about-club-section" id="about-club">
@@ -230,8 +263,6 @@ export const HomePage: React.FC = () => {
                 </div>
               </div>
             </section>
-          </>
-        )}
       </div>
 
       {/* Registration Modal Dialog */}
@@ -243,7 +274,7 @@ export const HomePage: React.FC = () => {
           setSelectedEventForModal(null);
         }}
         onSuccess={() => {
-          loadHomeData(); // Refresh registration counts
+          queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
         }}
       />
 

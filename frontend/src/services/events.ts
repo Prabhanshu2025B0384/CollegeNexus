@@ -20,7 +20,8 @@ export const eventService = {
 
   getFeaturedEvent: async (): Promise<Event | null> => {
     try {
-      return await api.get<Event>('/events/featured');
+      const res = await api.get<Event | null>('/events/featured');
+      return res && res.id ? res : null;
     } catch {
       return null;
     }

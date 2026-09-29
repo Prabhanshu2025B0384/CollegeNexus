@@ -216,8 +216,11 @@ The frontend requires only **one public variable**. Sensitive credentials must n
 | `ADMIN_PASSWORD` | Password for seeding initial admin user | **Yes** | Secure password | **YES** |
 | `ADMIN_USERNAME` | Username for admin login (default: `admin@gmail.com`) | No | `admin@gmail.com` | **NO** |
 | `ADMIN_EMAIL` | Admin contact email (default: `admin@collegeclub.edu`) | No | `admin@collegeclub.edu` | **NO** |
-| `SUPABASE_SECRET_KEY` | Supabase Secret Key (required only for banner image upload) | Conditional | Secret key from Supabase Settings → API Keys | **YES** |
 | `SUPABASE_STORAGE_BUCKET`| Supabase bucket name (default: `SDMS`) | No | `SDMS` | **NO** |
+| `SUPABASE_S3_ENDPOINT`   | Supabase S3-compatible endpoint | No | `https://[PROJECT_REF].storage.supabase.co/storage/v1/s3` | **NO** |
+| `SUPABASE_S3_REGION`     | Supabase storage region (default: `ap-southeast-1`) | No | `ap-southeast-1` | **NO** |
+| `SUPABASE_S3_ACCESS_KEY` | S3 Access Key ID for direct upload | Conditional | Access key from Supabase Settings → Storage → S3 Access Keys | **YES** |
+| `SUPABASE_S3_SECRET_KEY` | S3 Secret Access Key for direct upload | Conditional | Secret key from Supabase Settings → Storage → S3 Access Keys | **YES** |
 | `SEED_SAMPLE_DATA` | Enable demo event seeding on empty DB (default: `false`) | No | `false` in production, `true` for demo | **NO** |
 | `PORT` | Web server port (injected automatically by Render) | Auto | `8080` | **NO** |
 
@@ -225,24 +228,14 @@ The frontend requires only **one public variable**. Sensitive credentials must n
 
 ---
 
-## Database Configuration
+## File Storage (Supabase S3-Compatible Storage)
 
-Campus Nexus connects to PostgreSQL via HikariCP connection pooling, pre-configured for Supabase Transaction Pooler (port 5432 / 6543) and direct connections.
-
-- **Schema Auto-Update:** Hibernate manages table synchronization via `spring.jpa.hibernate.ddl-auto=update`.
-- **Reference DDL:** The full database schema with explicit foreign keys and indexes is documented in [`backend/src/main/resources/schema.sql`](file:///c:/Users/idonp/OneDrive/Desktop/EventMangement/backend/src/main/resources/schema.sql).
-- **Production Cleanliness Guarantee:** The application **never** auto-seeds dummy data into an empty production database (`app.seed.sample-data=false`).
-- **Optional Staging Seed:** An idempotent SQL script with 10 realistic events is available in [`backend/src/main/resources/sample-seed.sql`](file:///c:/Users/idonp/OneDrive/Desktop/EventMangement/backend/src/main/resources/sample-seed.sql) to run manually in Supabase SQL Editor if desired.
-
----
-
-## File Storage (Supabase Storage)
-
-Campus Nexus supports custom banner image uploads for events via Supabase Storage:
+Campus Nexus supports custom banner image uploads for events via Supabase S3-compatible Storage:
 
 1. **Bucket:** Configured in `app.supabase.storage-bucket` (default: `SDMS`). Must be marked **Public** in Supabase so uploaded images can be served globally via CDN.
 2. **Strict Content Validation:** The backend inspects true file magic bytes (JPEG, PNG, WebP) and rejects disguised HTML, SVGs with embedded scripts, executable binaries, and files larger than 5MB.
-3. **Optional Feature:** If `SUPABASE_SECRET_KEY` is not provided, administrators can still assign event banners by entering any external image URL (e.g., Unsplash, Cloudinary, Imgur).
+3. **S3 Protocol:** Uses AWS SDK for Java v2 with AWS SigV4 signed requests to `storage/v1/s3`, bypassing brittle REST JWT parsing.
+4. **Optional Feature:** If S3 keys are not provided, administrators can still assign event banners by entering any external image URL (e.g., Unsplash, Cloudinary, Imgur).
 
 ---
 

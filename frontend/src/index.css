@@ -76,10 +76,19 @@
   --radius-xl: 24px;
   --radius-full: 9999px;
 
-  /* Transitions */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Motion & Transition System */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --duration-fast: 140ms;
+  --duration-normal: 200ms;
+  --duration-slow: 280ms;
+
+  --transition-fast: var(--duration-fast) var(--ease-out);
+  --transition-normal: var(--duration-normal) var(--ease-out);
+  --transition-slow: var(--duration-slow) var(--ease-out);
 }
 
 /* CSS Reset & Baseline */
@@ -91,7 +100,7 @@
 
 html {
   font-size: 16px;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   text-size-adjust: 100%;
 }
 
@@ -189,10 +198,15 @@ input, select, textarea {
   font-weight: 600;
   font-size: 0.925rem;
   line-height: 1;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
   text-decoration: none;
   white-space: nowrap;
   user-select: none;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
 }
 
 .btn-primary {
@@ -210,6 +224,7 @@ input, select, textarea {
 
 .btn-primary:active:not(:disabled) {
   transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
 }
 
 .btn-secondary {
@@ -223,6 +238,14 @@ input, select, textarea {
   background-color: var(--gray-50);
   border-color: var(--gray-400);
   color: var(--navy-900);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary:active:not(:disabled) {
+  transform: translateY(0);
+  background-color: var(--gray-100);
+  box-shadow: var(--shadow-xs);
 }
 
 .btn-accent {
@@ -235,6 +258,11 @@ input, select, textarea {
   background-color: var(--accent-hover);
   color: #ffffff;
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+}
+
+.btn-accent:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-danger {
@@ -246,6 +274,12 @@ input, select, textarea {
 .btn-danger:hover:not(:disabled) {
   background-color: var(--danger-hover);
   color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+.btn-danger:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-sm {
@@ -325,6 +359,7 @@ input, select, textarea {
 }
 
 .card:hover {
+  transform: translateY(-2px);
   box-shadow: var(--shadow-md);
   border-color: var(--gray-300);
 }
@@ -356,7 +391,7 @@ input, select, textarea {
   border-radius: var(--radius-md);
   color: var(--gray-900);
   background-color: #ffffff;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
 }
 
 .form-input:focus, .form-select:focus, .form-textarea:focus {
@@ -377,6 +412,18 @@ input, select, textarea {
   font-size: 0.8rem;
   color: var(--danger);
   margin-top: 0.1rem;
+  animation: formErrorFadeIn var(--duration-fast) var(--ease-out);
+}
+
+@keyframes formErrorFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .form-help {
@@ -414,7 +461,7 @@ input, select, textarea {
   justify-content: center;
   z-index: 1000;
   padding: 1.5rem;
-  animation: modalFadeIn 200ms ease;
+  animation: modalFadeIn var(--duration-fast) var(--ease-out);
 }
 
 .modal-dialog {
@@ -426,7 +473,7 @@ input, select, textarea {
   overflow-y: auto;
   box-shadow: var(--shadow-xl);
   border: 1px solid var(--gray-200);
-  animation: modalSlideUp 250ms ease;
+  animation: modalScaleIn var(--duration-normal) var(--ease-out);
   display: flex;
   flex-direction: column;
 }
@@ -488,9 +535,15 @@ input, select, textarea {
   to { opacity: 1; }
 }
 
-@keyframes modalSlideUp {
-  from { transform: translateY(18px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 /* Alert Banners */
@@ -564,6 +617,10 @@ input, select, textarea {
   border-bottom: none;
 }
 
+.data-table tr {
+  transition: background-color var(--transition-fast);
+}
+
 .data-table tr:hover td {
   background-color: #fafbfc;
 }
@@ -598,3 +655,63 @@ input, select, textarea {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+/* Route Page Transitions (Subtle 180ms opacity + translateY) */
+.route-page-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  width: 100%;
+  animation: routePageFadeIn var(--duration-fast) var(--ease-out);
+}
+
+@keyframes routePageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Content Fade In (Smooth appearance for async lists and skeletons) */
+.content-fade-in {
+  animation: contentFadeIn var(--duration-normal) var(--ease-out);
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Reduced Motion Accessibility - Honor user OS preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .card:hover,
+  .event-card:hover,
+  .btn:hover,
+  .btn-primary:hover,
+  .btn-secondary:hover,
+  .btn-accent:hover,
+  .btn-danger:hover,
+  .card-image,
+  .event-card:hover .card-image,
+  .featured-cover-img,
+  .featured-banner-card:hover .featured-cover-img,
+  .featured-banner-card:hover {
+    transform: none !important;
+  }
+}
+

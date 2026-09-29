@@ -76,8 +76,8 @@ if (-not (Test-Path $backendEnv)) {
     exit 1
 }
 
-# Verify required Supabase and Security variables exist in backend/.env without exposing values
-$requiredKeys = @("SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_STORAGE_BUCKET", "DATABASE_URL", "JWT_SECRET")
+# Verify required Database, S3 Storage, and Security variables exist in backend/.env without exposing values
+$requiredKeys = @("DATABASE_URL", "JWT_SECRET", "SUPABASE_STORAGE_BUCKET", "SUPABASE_S3_ACCESS_KEY", "SUPABASE_S3_SECRET_KEY")
 $envContent = Get-Content $backendEnv -Encoding UTF8
 $foundKeys = @{}
 
@@ -93,15 +93,12 @@ foreach ($line in $envContent) {
     }
 }
 
-# If legacy SUPABASE_SERVICE_KEY was provided instead of SUPABASE_SECRET_KEY, map it
-if (-not $foundKeys.ContainsKey("SUPABASE_SECRET_KEY") -and $foundKeys.ContainsKey("SUPABASE_SERVICE_KEY")) {
-    $foundKeys["SUPABASE_SECRET_KEY"] = $foundKeys["SUPABASE_SERVICE_KEY"]
-    [Environment]::SetEnvironmentVariable("SUPABASE_SECRET_KEY", $foundKeys["SUPABASE_SERVICE_KEY"], "Process")
+# Set default S3 endpoint and region if not explicitly provided
+if (-not $foundKeys.ContainsKey("SUPABASE_S3_ENDPOINT") -or [string]::IsNullOrWhiteSpace($foundKeys["SUPABASE_S3_ENDPOINT"])) {
+    [Environment]::SetEnvironmentVariable("SUPABASE_S3_ENDPOINT", "https://vshsmnrzeusimlcemzhc.storage.supabase.co/storage/v1/s3", "Process")
 }
-
-# Ensure SUPABASE_SERVICE_KEY alias is also populated in process environment for any legacy consumers
-if ($foundKeys.ContainsKey("SUPABASE_SECRET_KEY") -and -not $foundKeys.ContainsKey("SUPABASE_SERVICE_KEY")) {
-    [Environment]::SetEnvironmentVariable("SUPABASE_SERVICE_KEY", $foundKeys["SUPABASE_SECRET_KEY"], "Process")
+if (-not $foundKeys.ContainsKey("SUPABASE_S3_REGION") -or [string]::IsNullOrWhiteSpace($foundKeys["SUPABASE_S3_REGION"])) {
+    [Environment]::SetEnvironmentVariable("SUPABASE_S3_REGION", "ap-southeast-1", "Process")
 }
 
 $missingKeys = @()

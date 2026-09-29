@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   Search,
   Trash2,
@@ -8,57 +9,43 @@ import {
   Phone,
   Mail,
   GraduationCap,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { registrationService } from '../services/registrations';
 import { eventService } from '../services/events';
-import type { Registration, Event } from '../types';
-import { LoadingSpinner } from '../components/LoadingSpinner';
+import { queryKeys } from '../lib/queryKeys';
+import { useDebounce } from '../hooks/useDebounce';
+import type { Registration } from '../types';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { TableSkeleton } from '../components/skeletons/TableSkeleton';
+import { Toast, type ToastMessage } from '../components/Toast';
 
 const YEARS = ['All', '1st Year', '2nd Year', '3rd Year', '4th Year', 'Postgraduate'];
 
 export const AdminRegistrationsPage: React.FC = () => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [registrations, setRegistrations] = useState<Registration[]>([]);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedEventId, setSelectedEventId] = useState<number | undefined>(undefined);
-  const [selectedYear, setSelectedYear] = useState('All');
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Read initial filter values from URL query parameters (Requirement 14 & 15: Preserve State)
+  const initialSearch = searchParams.get('search') || '';
+  const initialEventId = searchParams.get('event') ? parseInt(searchParams.get('event')!, 10) : undefined;
+  const initialYear = searchParams.get('year') || 'All';
 
-  // Deletion modal
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [selectedEventId, setSelectedEventId] = useState<number | undefined>(initialEventId);
+  const [selectedYear, setSelectedYear] = useState(initialYear);
+
+  // Toast feedback state
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  // 350ms search debounce
+  const debouncedSearch = useDebounce(searchTerm, 350);
+
+  // Deletion modal target
   const [deleteTarget, setDeleteTarget] = useState<Registration | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const loadInitialEvents = useCallback(async () => {
-    try {
-      const eventsData = await eventService.adminGetAllEvents();
-      setEvents(eventsData);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const loadRegistrations = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await registrationService.getRegistrations(
-        searchTerm,
-        selectedEventId,
-        selectedYear
-      );
-      setRegistrations(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load registrations');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchTerm, selectedEventId, selectedYear]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -66,30 +53,131 @@ export const AdminRegistrationsPage: React.FC = () => {
     }
   }, [authLoading, isAuthenticated, navigate]);
 
+  // Sync debounced search to URL
   useEffect(() => {
-    if (isAuthenticated) {
-      loadInitialEvents();
+    const currentParam = searchParams.get('search') || '';
+    const trimmedDebounced = debouncedSearch ? debouncedSearch.trim() : '';
+    if (currentParam !== trimmedDebounced) {
+      const params = new URLSearchParams(searchParams);
+      if (trimmedDebounced) {
+        params.set('search', trimmedDebounced);
+      } else {
+        params.delete('search');
+      }
+      setSearchParams(params, { replace: true });
     }
-  }, [isAuthenticated, loadInitialEvents]);
+  }, [debouncedSearch]);
 
+  // Synchronize browser history / URL back-forward navigation back into local state
   useEffect(() => {
-    if (isAuthenticated) {
-      loadRegistrations();
+    const urlSearch = searchParams.get('search') || '';
+    const urlEventId = searchParams.get('event') ? parseInt(searchParams.get('event')!, 10) : undefined;
+    const urlYear = searchParams.get('year') || 'All';
+
+    if (urlSearch !== searchTerm && urlSearch !== debouncedSearch) {
+      setSearchTerm(urlSearch);
     }
-  }, [isAuthenticated, loadRegistrations]);
+    if (urlEventId !== selectedEventId) {
+      setSelectedEventId(urlEventId);
+    }
+    if (urlYear !== selectedYear) {
+      setSelectedYear(urlYear);
+    }
+  }, [searchParams]);
+
+  const handleEventChange = (eventId?: number) => {
+    setSelectedEventId(eventId);
+    const params = new URLSearchParams(searchParams);
+    if (eventId) {
+      params.set('event', eventId.toString());
+    } else {
+      params.delete('event');
+    }
+    setSearchParams(params);
+  };
+
+  const handleYearChange = (year: string) => {
+    setSelectedYear(year);
+    const params = new URLSearchParams(searchParams);
+    if (year === 'All') {
+      params.delete('year');
+    } else {
+      params.set('year', year);
+    }
+    setSearchParams(params);
+  };
+
+  // 1. Events list query for filter dropdown (60s staleTime)
+  const { data: events = [] } = useQuery({
+    queryKey: queryKeys.admin.events(),
+    queryFn: () => eventService.adminGetAllEvents(),
+    enabled: isAuthenticated,
+    staleTime: 60 * 1000,
+  });
+
+  // 2. Registrations query with keepPreviousData to prevent UI flashes
+  const currentQueryKey = queryKeys.registrations.list({
+    search: debouncedSearch,
+    eventId: selectedEventId,
+    year: selectedYear,
+  });
+
+  const {
+    data: registrations = [],
+    isLoading,
+    isFetching,
+    error,
+  } = useQuery({
+    queryKey: currentQueryKey,
+    queryFn: () =>
+      registrationService.getRegistrations(debouncedSearch, selectedEventId, selectedYear),
+    enabled: isAuthenticated,
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+  });
+
+  // 3. Delete Registration Mutation with optimistic UI
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => registrationService.deleteRegistration(id),
+    onMutate: async (deletedId: number) => {
+      await queryClient.cancelQueries({ queryKey: currentQueryKey });
+      const previousRegistrations = queryClient.getQueryData<Registration[]>(currentQueryKey);
+      if (previousRegistrations) {
+        queryClient.setQueryData<Registration[]>(
+          currentQueryKey,
+          previousRegistrations.filter((r) => r.id !== deletedId)
+        );
+      }
+      return { previousRegistrations };
+    },
+    onSuccess: () => {
+      setToast({
+        id: Date.now().toString(),
+        type: 'success',
+        message: 'Registration record removed successfully.',
+      });
+    },
+    onError: (err: any, _id, context) => {
+      if (context?.previousRegistrations) {
+        queryClient.setQueryData(currentQueryKey, context.previousRegistrations);
+      }
+      setToast({
+        id: Date.now().toString(),
+        type: 'error',
+        message: err.message || 'Failed to remove registration. State restored.',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.registrations.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.stats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      setDeleteTarget(null);
+    },
+  });
 
   const handleDeleteRegistration = async () => {
     if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      await registrationService.deleteRegistration(deleteTarget.id);
-      setDeleteTarget(null);
-      await loadRegistrations();
-    } catch (err: any) {
-      alert(err.message || 'Failed to remove registration');
-    } finally {
-      setIsDeleting(false);
-    }
+    deleteMutation.mutate(deleteTarget.id);
   };
 
   const handleExportCSV = () => {
@@ -118,21 +206,20 @@ export const AdminRegistrationsPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  if (authLoading) {
-    return (
-      <div className="page-container">
-        <LoadingSpinner message="Checking authentication..." />
-      </div>
-    );
-  }
-
   return (
     <div className="admin-page page-container">
       {/* Header */}
       <div className="admin-header-row">
         <div>
           <span className="admin-tag">Club Administration</span>
-          <h1 className="admin-page-title">Participant Registrations</h1>
+          <h1 className="admin-page-title">
+            Participant Registrations
+            {isFetching && !isLoading && (
+              <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--gray-400)', marginLeft: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <RefreshCw size={13} className="spin-slow" /> Updating...
+              </span>
+            )}
+          </h1>
           <p className="admin-page-subtitle">
             Search, filter, and audit verified student event registrations.
           </p>
@@ -183,7 +270,7 @@ export const AdminRegistrationsPage: React.FC = () => {
             className="form-select"
             value={selectedEventId || ''}
             onChange={(e) =>
-              setSelectedEventId(e.target.value ? parseInt(e.target.value, 10) : undefined)
+              handleEventChange(e.target.value ? parseInt(e.target.value, 10) : undefined)
             }
           >
             <option value="">All Events</option>
@@ -201,7 +288,7 @@ export const AdminRegistrationsPage: React.FC = () => {
           <select
             className="form-select"
             value={selectedYear}
-            onChange={(e) => setSelectedYear(e.target.value)}
+            onChange={(e) => handleYearChange(e.target.value)}
           >
             {YEARS.map((y) => (
               <option key={y} value={y}>
@@ -214,13 +301,13 @@ export const AdminRegistrationsPage: React.FC = () => {
 
       {error && (
         <div className="alert alert-danger" style={{ marginBottom: '2rem' }}>
-          <div>{error}</div>
+          <div>Failed to retrieve registrations from the server.</div>
         </div>
       )}
 
       {/* Registrations Table */}
       {isLoading ? (
-        <LoadingSpinner message="Retrieving student registrations..." />
+        <TableSkeleton rows={8} columns={7} />
       ) : (
         <div className="table-responsive">
           <table className="data-table">
@@ -301,8 +388,8 @@ export const AdminRegistrationsPage: React.FC = () => {
                     <button
                       onClick={() => {
                         setSearchTerm('');
-                        setSelectedEventId(undefined);
-                        setSelectedYear('All');
+                        handleEventChange(undefined);
+                        handleYearChange('All');
                       }}
                       className="btn btn-sm btn-secondary"
                     >
@@ -323,7 +410,7 @@ export const AdminRegistrationsPage: React.FC = () => {
         message={`Are you sure you want to remove the registration of "${deleteTarget?.name}" for "${deleteTarget?.eventTitle}"? This cannot be undone.`}
         confirmLabel="Remove Attendee"
         confirmVariant="danger"
-        isLoading={isDeleting}
+        isLoading={deleteMutation.isPending}
         onConfirm={handleDeleteRegistration}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -496,6 +583,11 @@ export const AdminRegistrationsPage: React.FC = () => {
           transition: all var(--transition-fast);
         }
 
+        .table-action-btn:hover {
+          background-color: var(--gray-100);
+          color: var(--navy-900);
+        }
+
         .table-action-btn.text-danger:hover {
           background-color: var(--danger-light);
           color: var(--danger);
@@ -516,6 +608,9 @@ export const AdminRegistrationsPage: React.FC = () => {
           }
         }
       `}</style>
+
+      {/* Non-blocking feedback toast */}
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 };

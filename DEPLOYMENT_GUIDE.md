@@ -95,7 +95,11 @@ Under the **Environment** tab of your Web Service, add the following environment
 | `CORS_ALLOWED_ORIGINS` | **Yes** | Your Vercel frontend URL, e.g. `https://campus-nexus.vercel.app` (comma-separated if multiple) | No |
 | `ADMIN_PASSWORD` | **Yes** | Secure password for initial admin user creation on first boot | **YES** |
 | `ADMIN_USERNAME` | No (default: `admin@gmail.com`) | Username for administrative login | No |
-| `SUPABASE_SECRET_KEY` | Conditional | Required only if event banner image uploads to Supabase Storage are used | **YES** |
+| `SUPABASE_STORAGE_BUCKET` | No (default: `SDMS`) | Target bucket name in Supabase Storage | No |
+| `SUPABASE_S3_ENDPOINT` | No (default: configured) | Supabase S3 endpoint: `https://[PROJECT_REF].storage.supabase.co/storage/v1/s3` | No |
+| `SUPABASE_S3_REGION` | No (default: `ap-southeast-1`) | Supabase storage region (e.g., `ap-southeast-1`) | No |
+| `SUPABASE_S3_ACCESS_KEY` | Conditional | S3 Access Key ID from Supabase Project Settings → Storage → S3 Access Keys | **YES** |
+| `SUPABASE_S3_SECRET_KEY` | Conditional | S3 Secret Access Key from Supabase Project Settings → Storage → S3 Access Keys | **YES** |
 | `PORT` | Auto | Render injects this automatically (e.g. `10000`); Tomcat binds dynamically via `server.port=${PORT:8080}` | No |
 | `SEED_SAMPLE_DATA` | No (default: `false`) | Keep `false` in production to prevent fake dummy data | No |
 

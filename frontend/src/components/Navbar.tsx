@@ -188,11 +188,12 @@ export const Navbar: React.FC = () => {
           font-size: 0.925rem;
           padding: 0.4rem 0.6rem;
           border-radius: var(--radius-sm);
-          transition: all var(--transition-fast);
+          transition: color var(--transition-fast), background-color var(--transition-fast);
         }
 
         .nav-link:hover {
           color: var(--primary);
+          background-color: var(--primary-light);
         }
 
         .nav-link.active {
@@ -247,6 +248,18 @@ export const Navbar: React.FC = () => {
           background: #ffffff;
           border-bottom: 1px solid var(--gray-200);
           box-shadow: var(--shadow-md);
+          animation: drawerSlideDown var(--duration-fast) var(--ease-out);
+        }
+
+        @keyframes drawerSlideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-6px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
         .mobile-nav-link {

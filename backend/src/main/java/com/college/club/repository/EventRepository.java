@@ -23,6 +23,8 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     Optional<Event> findFirstByFeaturedTrueOrderByEventDateAsc();
 
+    List<Event> findByFeaturedTrue();
+
     List<Event> findByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate date);
 
     List<Event> findByCategoryIgnoreCaseOrderByEventDateAsc(String category);

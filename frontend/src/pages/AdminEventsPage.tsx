@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   Plus,
   Edit,
@@ -8,49 +9,40 @@ import {
   Search,
   Filter,
   Users,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { eventService } from '../services/events';
+import { queryKeys } from '../lib/queryKeys';
+import { useDebounce } from '../hooks/useDebounce';
 import type { Event, EventFormData } from '../types';
-import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EventFormModal } from '../components/EventFormModal';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { TableSkeleton } from '../components/skeletons/TableSkeleton';
+import { Toast, type ToastMessage } from '../components/Toast';
 
 export const AdminEventsPage: React.FC = () => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [events, setEvents] = useState<Event[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const initialSearch = searchParams.get('search') || '';
+  const initialCategory = searchParams.get('category') || 'All';
+
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+
+  // Toast feedback state
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  // 350ms search debounce
+  const debouncedSearch = useDebounce(searchTerm, 350);
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [deleteTargetEvent, setDeleteTargetEvent] = useState<Event | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [eventsData, categoriesData] = await Promise.all([
-        eventService.adminGetAllEvents(searchTerm, selectedCategory),
-        eventService.getCategories(),
-      ]);
-      setEvents(eventsData);
-      if (categoriesData && categoriesData.length > 0) {
-        setCategories(categoriesData);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load events');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchTerm, selectedCategory]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -58,42 +50,149 @@ export const AdminEventsPage: React.FC = () => {
     }
   }, [authLoading, isAuthenticated, navigate]);
 
+  // Sync debounced search with URL parameters
+  // Sync debounced search to URL
   useEffect(() => {
-    if (isAuthenticated) {
-      loadData();
+    const currentParam = searchParams.get('search') || '';
+    const trimmedDebounced = debouncedSearch ? debouncedSearch.trim() : '';
+    if (currentParam !== trimmedDebounced) {
+      const params = new URLSearchParams(searchParams);
+      if (trimmedDebounced) {
+        params.set('search', trimmedDebounced);
+      } else {
+        params.delete('search');
+      }
+      setSearchParams(params, { replace: true });
     }
-  }, [isAuthenticated, loadData]);
+  }, [debouncedSearch]);
+
+  // Synchronize browser history / URL back-forward navigation back into local state
+  useEffect(() => {
+    const urlCategory = searchParams.get('category') || 'All';
+    const urlSearch = searchParams.get('search') || '';
+
+    if (urlCategory !== selectedCategory) {
+      setSelectedCategory(urlCategory);
+    }
+    if (urlSearch !== searchTerm && urlSearch !== debouncedSearch) {
+      setSearchTerm(urlSearch);
+    }
+  }, [searchParams]);
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    const params = new URLSearchParams(searchParams);
+    if (category === 'All') {
+      params.delete('category');
+    } else {
+      params.set('category', category);
+    }
+    setSearchParams(params);
+  };
+
+  // 1. Categories query
+  const { data: categories = [] } = useQuery({
+    queryKey: queryKeys.events.categories(),
+    queryFn: () => eventService.getCategories(),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  // 2. Admin events query with keepPreviousData to prevent UI flashes
+  const currentQueryKey = queryKeys.admin.events({
+    search: debouncedSearch,
+    category: selectedCategory,
+  });
+
+  const {
+    data: events = [],
+    isLoading,
+    isFetching,
+    error,
+  } = useQuery({
+    queryKey: currentQueryKey,
+    queryFn: () => eventService.adminGetAllEvents(debouncedSearch, selectedCategory),
+    enabled: isAuthenticated,
+    placeholderData: keepPreviousData,
+    staleTime: 60 * 1000,
+  });
+
+  // 3. Create / Update Event Mutation
+  const saveMutation = useMutation({
+    mutationFn: async (formData: EventFormData) => {
+      if (editingEvent) {
+        return eventService.updateEvent(editingEvent.id, formData);
+      } else {
+        return eventService.createEvent(formData);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.events() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.stats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      setIsFormModalOpen(false);
+      setEditingEvent(null);
+      setToast({
+        id: Date.now().toString(),
+        type: 'success',
+        message: editingEvent ? 'Event updated successfully.' : 'Event created successfully.',
+      });
+    },
+    onError: (err: any) => {
+      setToast({
+        id: Date.now().toString(),
+        type: 'error',
+        message: err.message || 'Failed to save event.',
+      });
+    },
+  });
+
+  // 4. Optimistic Delete Mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => eventService.deleteEvent(id),
+    onMutate: async (deletedId: number) => {
+      await queryClient.cancelQueries({ queryKey: currentQueryKey });
+      const previousEvents = queryClient.getQueryData<Event[]>(currentQueryKey);
+      if (previousEvents) {
+        queryClient.setQueryData<Event[]>(
+          currentQueryKey,
+          previousEvents.filter((e) => e.id !== deletedId)
+        );
+      }
+      return { previousEvents };
+    },
+    onSuccess: () => {
+      setToast({
+        id: Date.now().toString(),
+        type: 'success',
+        message: 'Event and associated cloud storage deleted successfully.',
+      });
+    },
+    onError: (err: any, _id, context) => {
+      if (context?.previousEvents) {
+        queryClient.setQueryData(currentQueryKey, context.previousEvents);
+      }
+      setToast({
+        id: Date.now().toString(),
+        type: 'error',
+        message: err.message || 'Failed to delete event. State restored.',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.events() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.stats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      setDeleteTargetEvent(null);
+    },
+  });
 
   const handleSaveEvent = async (formData: EventFormData) => {
-    if (editingEvent) {
-      await eventService.updateEvent(editingEvent.id, formData);
-    } else {
-      await eventService.createEvent(formData);
-    }
-    await loadData();
+    saveMutation.mutate(formData);
   };
 
   const handleDeleteEvent = async () => {
     if (!deleteTargetEvent) return;
-    setIsDeleting(true);
-    try {
-      await eventService.deleteEvent(deleteTargetEvent.id);
-      setDeleteTargetEvent(null);
-      await loadData();
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete event');
-    } finally {
-      setIsDeleting(false);
-    }
+    deleteMutation.mutate(deleteTargetEvent.id);
   };
-
-  if (authLoading) {
-    return (
-      <div className="page-container">
-        <LoadingSpinner message="Checking authentication..." />
-      </div>
-    );
-  }
 
   return (
     <div className="admin-page page-container">
@@ -101,7 +200,14 @@ export const AdminEventsPage: React.FC = () => {
       <div className="admin-header-row">
         <div>
           <span className="admin-tag">Club Administration</span>
-          <h1 className="admin-page-title">Event Management</h1>
+          <h1 className="admin-page-title">
+            Event Management
+            {isFetching && !isLoading && (
+              <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--gray-400)', marginLeft: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <RefreshCw size={13} className="spin-slow" /> Updating...
+              </span>
+            )}
+          </h1>
           <p className="admin-page-subtitle">
             Create, update, or remove events and monitor student enrollment status.
           </p>
@@ -151,7 +257,7 @@ export const AdminEventsPage: React.FC = () => {
           <select
             className="form-select"
             value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
+            onChange={(e) => handleCategoryChange(e.target.value)}
           >
             <option value="All">All Categories</option>
             {categories.map((cat) => (
@@ -165,13 +271,13 @@ export const AdminEventsPage: React.FC = () => {
 
       {error && (
         <div className="alert alert-danger" style={{ marginBottom: '2rem' }}>
-          <div>{error}</div>
+          <div>Failed to retrieve events from the server.</div>
         </div>
       )}
 
       {/* Events Table */}
       {isLoading ? (
-        <LoadingSpinner message="Loading events roster..." />
+        <TableSkeleton rows={6} columns={8} />
       ) : (
         <div className="table-responsive">
           <table className="data-table">
@@ -273,7 +379,7 @@ export const AdminEventsPage: React.FC = () => {
                     <button
                       onClick={() => {
                         setSearchTerm('');
-                        setSelectedCategory('All');
+                        handleCategoryChange('All');
                       }}
                       className="btn btn-sm btn-secondary"
                     >
@@ -302,10 +408,10 @@ export const AdminEventsPage: React.FC = () => {
       <ConfirmModal
         isOpen={!!deleteTargetEvent}
         title="Delete Event?"
-        message={`Are you sure you want to delete "${deleteTargetEvent?.title}"? All participant registrations for this event will also be deleted permanently.`}
+        message={`Are you sure you want to delete "${deleteTargetEvent?.title}"? All participant registrations and storage assets for this event will be deleted permanently.`}
         confirmLabel="Confirm Delete"
         confirmVariant="danger"
-        isLoading={isDeleting}
+        isLoading={deleteMutation.isPending}
         onConfirm={handleDeleteEvent}
         onCancel={() => setDeleteTargetEvent(null)}
       />
@@ -477,6 +583,9 @@ export const AdminEventsPage: React.FC = () => {
           }
         }
       `}</style>
+
+      {/* Non-blocking feedback toast */}
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 };

@@ -24,6 +24,7 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
           gap: 1rem;
           width: 100%;
           padding: 2rem;
+          animation: contentFadeIn var(--duration-fast) var(--ease-out);
         }
 
         .spinner-icon {

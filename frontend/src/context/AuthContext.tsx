@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { authService } from '../services/auth';
+import { clearPrivateCache } from '../lib/queryClient';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -40,6 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     authService.logout();
+    clearPrivateCache();
     setIsAuthenticated(false);
     setUsername(null);
     setRole(null);

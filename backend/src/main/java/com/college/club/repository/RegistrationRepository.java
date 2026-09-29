@@ -19,6 +19,9 @@ public interface RegistrationRepository extends JpaRepository<Registration, Long
 
     long countByEventId(Long eventId);
 
+    @Query("SELECT r.event.id, COUNT(r) FROM Registration r WHERE r.event.id IN :eventIds GROUP BY r.event.id")
+    List<Object[]> countRegistrationsByEventIds(@Param("eventIds") List<Long> eventIds);
+
     @Query("SELECT r FROM Registration r JOIN FETCH r.event e WHERE " +
            "(:eventId IS NULL OR e.id = :eventId) AND " +
            "(:year IS NULL OR :year = '' OR r.year = :year) AND " +

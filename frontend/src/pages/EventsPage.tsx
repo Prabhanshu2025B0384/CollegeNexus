@@ -1,102 +1,128 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter } from 'lucide-react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { Filter, RefreshCw } from 'lucide-react';
 import type { Event } from '../types';
 import { eventService } from '../services/events';
+import { queryKeys } from '../lib/queryKeys';
+import { useDebounce } from '../hooks/useDebounce';
 import { EventCard } from '../components/EventCard';
 import { SearchBar } from '../components/SearchBar';
 import { CategoryFilter } from '../components/CategoryFilter';
 import { RegistrationModal } from '../components/RegistrationModal';
-import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
+import { EventCardSkeleton } from '../components/skeletons/EventCardSkeleton';
+
+const DEFAULT_CATEGORIES = [
+  'Technical',
+  'Workshop',
+  'Hackathon',
+  'Cultural',
+  'Sports',
+  'Literary',
+  'Gaming',
+  'Career',
+  'Seminar',
+  'Competition',
+];
 
 export const EventsPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const categoryParam = searchParams.get('category') || 'All';
 
-  const [events, setEvents] = useState<Event[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState(categoryParam);
-  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'past'>('all');
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Read initial filter values from URL query parameters
+  const initialCategory = searchParams.get('category') || 'All';
+  const initialSearch = searchParams.get('search') || '';
+  const initialTime = (searchParams.get('time') as 'all' | 'upcoming' | 'past') || 'all';
+
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'past'>(initialTime);
+
+  // 350ms debounce to prevent spamming backend on each keystroke
+  const debouncedSearch = useDebounce(searchTerm, 350);
+
+  // Sync debounced search with URL parameters
+  useEffect(() => {
+    const currentParam = searchParams.get('search') || '';
+    const trimmedDebounced = debouncedSearch ? debouncedSearch.trim() : '';
+    if (currentParam !== trimmedDebounced) {
+      const params = new URLSearchParams(searchParams);
+      if (trimmedDebounced) {
+        params.set('search', trimmedDebounced);
+      } else {
+        params.delete('search');
+      }
+      setSearchParams(params, { replace: true });
+    }
+  }, [debouncedSearch]);
+
+  // Synchronize browser history / URL back-forward navigation back into local state
+  useEffect(() => {
+    const urlCategory = searchParams.get('category') || 'All';
+    const urlSearch = searchParams.get('search') || '';
+    const urlTime = (searchParams.get('time') as 'all' | 'upcoming' | 'past') || 'all';
+
+    if (urlCategory !== selectedCategory) {
+      setSelectedCategory(urlCategory);
+    }
+    if (urlSearch !== searchTerm && urlSearch !== debouncedSearch) {
+      setSearchTerm(urlSearch);
+    }
+    if (urlTime !== timeFilter) {
+      setTimeFilter(urlTime);
+    }
+  }, [searchParams]);
+
+  // Sync category changes to URL
+  const handleCategorySelect = (category: string) => {
+    setSelectedCategory(category);
+    const params = new URLSearchParams(searchParams);
+    if (category === 'All') {
+      params.delete('category');
+    } else {
+      params.set('category', category);
+    }
+    setSearchParams(params);
+  };
+
+  // Sync time filter to URL
+  const handleTimeSelect = (time: 'all' | 'upcoming' | 'past') => {
+    setTimeFilter(time);
+    const params = new URLSearchParams(searchParams);
+    if (time === 'all') {
+      params.delete('time');
+    } else {
+      params.set('time', time);
+    }
+    setSearchParams(params);
+  };
+
+  // 1. Categories query: long staleTime (30 min)
+  const { data: categories = DEFAULT_CATEGORIES } = useQuery({
+    queryKey: queryKeys.events.categories(),
+    queryFn: async () => {
+      const cats = await eventService.getCategories();
+      return cats && cats.length > 0 ? cats : DEFAULT_CATEGORIES;
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+
+  // 2. Events query: keep previous data during search/filter refetch to prevent blanking
+  const {
+    data: events = [],
+    isLoading,
+    isFetching,
+    isError,
+  } = useQuery({
+    queryKey: queryKeys.events.list({ search: debouncedSearch, category: selectedCategory }),
+    queryFn: () => eventService.getAllEvents(debouncedSearch, selectedCategory),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const [selectedEventForModal, setSelectedEventForModal] = useState<Event | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const fetchEvents = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await eventService.getAllEvents(searchTerm, selectedCategory);
-      setEvents(data);
-    } catch {
-      setError(
-        "We couldn't load the events right now. Please verify the backend is running and try again."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchTerm, selectedCategory]);
-
-  const loadCategories = useCallback(async () => {
-    try {
-      const cats = await eventService.getCategories();
-      if (cats && cats.length > 0) {
-        setCategories(cats);
-      } else {
-        setCategories([
-          'Technical',
-          'Workshop',
-          'Hackathon',
-          'Cultural',
-          'Sports',
-          'Literary',
-          'Gaming',
-          'Career',
-          'Seminar',
-          'Competition',
-        ]);
-      }
-    } catch {
-      setCategories([
-        'Technical',
-        'Workshop',
-        'Hackathon',
-        'Cultural',
-        'Sports',
-        'Literary',
-        'Gaming',
-        'Career',
-        'Seminar',
-        'Competition',
-      ]);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
-
-  useEffect(() => {
-    setSelectedCategory(categoryParam);
-  }, [categoryParam]);
-
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
-
-  const handleCategorySelect = (category: string) => {
-    setSelectedCategory(category);
-    const newParams = new URLSearchParams(searchParams);
-    if (category === 'All') {
-      newParams.delete('category');
-    } else {
-      newParams.set('category', category);
-    }
-    setSearchParams(newParams);
-  };
 
   const handleOpenRegistration = (event: Event) => {
     setSelectedEventForModal(event);
@@ -117,6 +143,13 @@ export const EventsPage: React.FC = () => {
       return true;
     });
   }, [events, timeFilter, today]);
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setSelectedCategory('All');
+    setTimeFilter('all');
+    setSearchParams(new URLSearchParams());
+  };
 
   return (
     <div className="events-page page-container">
@@ -141,19 +174,19 @@ export const EventsPage: React.FC = () => {
           <div className="time-filter-buttons">
             <button
               className={`time-btn ${timeFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setTimeFilter('all')}
+              onClick={() => handleTimeSelect('all')}
             >
               All Events
             </button>
             <button
               className={`time-btn ${timeFilter === 'upcoming' ? 'active' : ''}`}
-              onClick={() => setTimeFilter('upcoming')}
+              onClick={() => handleTimeSelect('upcoming')}
             >
               Upcoming
             </button>
             <button
               className={`time-btn ${timeFilter === 'past' ? 'active' : ''}`}
-              onClick={() => setTimeFilter('past')}
+              onClick={() => handleTimeSelect('past')}
             >
               Past
             </button>
@@ -179,16 +212,17 @@ export const EventsPage: React.FC = () => {
         <span className="results-count">
           Showing <strong>{filteredEvents.length}</strong> event{filteredEvents.length === 1 ? '' : 's'}
           {selectedCategory !== 'All' ? ` in ${selectedCategory}` : ''}
-          {searchTerm ? ` matching "${searchTerm}"` : ''}
+          {debouncedSearch ? ` matching "${debouncedSearch}"` : ''}
+          {isFetching && !isLoading && (
+            <span style={{ fontSize: '0.8rem', color: 'var(--gray-400)', marginLeft: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+              <RefreshCw size={12} className="spin-slow" /> Updating...
+            </span>
+          )}
         </span>
         {(searchTerm || selectedCategory !== 'All' || timeFilter !== 'all') && (
           <button
             className="btn btn-sm btn-secondary reset-filters-btn"
-            onClick={() => {
-              setSearchTerm('');
-              handleCategorySelect('All');
-              setTimeFilter('all');
-            }}
+            onClick={handleResetFilters}
           >
             Reset Filters
           </button>
@@ -197,10 +231,14 @@ export const EventsPage: React.FC = () => {
 
       {/* Content Area */}
       {isLoading ? (
-        <LoadingSpinner message="Searching and retrieving events..." />
-      ) : error ? (
+        <div className="grid-3 events-grid">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <EventCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : isError ? (
         <div className="alert alert-danger" style={{ margin: '2rem 0' }}>
-          <div>{error}</div>
+          <div>We couldn't load the events right now. Please verify the backend is running and try again.</div>
         </div>
       ) : filteredEvents.length > 0 ? (
         <div className="grid-3 events-grid">
@@ -217,11 +255,7 @@ export const EventsPage: React.FC = () => {
           title="No events found"
           description="We couldn't find any events matching your current search or category filter. Try clearing filters to see all available events."
           actionLabel="Clear All Filters"
-          onAction={() => {
-            setSearchTerm('');
-            handleCategorySelect('All');
-            setTimeFilter('all');
-          }}
+          onAction={handleResetFilters}
           icon={searchTerm ? 'search' : 'calendar'}
         />
       )}
@@ -235,7 +269,8 @@ export const EventsPage: React.FC = () => {
           setSelectedEventForModal(null);
         }}
         onSuccess={() => {
-          fetchEvents(); // Refresh registrations count
+          // Invalidate targeted event queries without wiping the whole screen
+          queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
         }}
       />
 

@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar,
   Clock,
@@ -12,39 +13,31 @@ import {
   Star,
   Info,
 } from 'lucide-react';
-import type { Event } from '../types';
 import { eventService } from '../services/events';
+import { queryKeys } from '../lib/queryKeys';
 import { RegistrationModal } from '../components/RegistrationModal';
-import { LoadingSpinner } from '../components/LoadingSpinner';
+import { EventDetailsSkeleton } from '../components/skeletons/EventDetailsSkeleton';
 
 export const EventDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const numericId = id ? parseInt(id, 10) : 0;
 
-  const [event, setEvent] = useState<Event | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const loadEvent = useCallback(async (eventId: number) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await eventService.getEventById(eventId);
-      setEvent(data);
-    } catch (err: any) {
-      setError(err.message || 'Event not found');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (id) {
-      loadEvent(parseInt(id, 10));
-    }
-  }, [id, loadEvent]);
+  const {
+    data: event,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: queryKeys.events.detail(numericId),
+    queryFn: () => eventService.getEventById(numericId),
+    enabled: numericId > 0,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const handleShare = () => {
     if (navigator.clipboard) {
@@ -74,19 +67,15 @@ export const EventDetailsPage: React.FC = () => {
   }, [event]);
 
   if (isLoading) {
-    return (
-      <div className="page-container">
-        <LoadingSpinner message="Loading event details..." />
-      </div>
-    );
+    return <EventDetailsSkeleton />;
   }
 
-  if (error || !event) {
+  if (isError || !event) {
     return (
       <div className="page-container" style={{ textAlign: 'center', padding: '5rem 1rem' }}>
         <h2 style={{ marginBottom: '1rem', color: 'var(--navy-900)' }}>Event Not Found</h2>
         <p style={{ color: 'var(--gray-500)', marginBottom: '2.5rem' }}>
-          {error || 'The event you are looking for does not exist or has been removed.'}
+          {(error as any)?.message || 'The event you are looking for does not exist or has been removed.'}
         </p>
         <Link to="/events" className="btn btn-primary">
           <ArrowLeft size={16} /> Back to All Events
@@ -120,10 +109,17 @@ export const EventDetailsPage: React.FC = () => {
               }
               alt={event.title}
               className="details-banner-image"
+              decoding="async"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.includes('photo-1540575467063-178a50c2df87')) {
+                  target.src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1200&q=80';
+                }
+              }}
             />
             <div className="banner-badges">
-              <span className={`badge badge-${event.category.toLowerCase()}`}>
-                {event.category}
+              <span className={`badge badge-${(event.category || 'General').toLowerCase()}`}>
+                {event.category || 'General'}
               </span>
               {event.featured && (
                 <span className="badge badge-featured">
@@ -250,7 +246,8 @@ export const EventDetailsPage: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={() => {
-          if (id) loadEvent(parseInt(id, 10));
+          queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(numericId) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
         }}
       />
 

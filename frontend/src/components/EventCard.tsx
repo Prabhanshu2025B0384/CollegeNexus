@@ -1,7 +1,10 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Calendar, Clock, MapPin, Users, ArrowRight, CheckCircle2, XCircle, Star } from 'lucide-react';
 import type { Event } from '../types';
+import { queryKeys } from '../lib/queryKeys';
+import { eventService } from '../services/events';
 
 interface EventCardProps {
   event: Event;
@@ -9,28 +12,52 @@ interface EventCardProps {
 }
 
 export const EventCard: React.FC<EventCardProps> = ({ event, onRegisterClick }) => {
-  const isPast = useMemo(() => {
-    return new Date(event.eventDate) < new Date(new Date().setHours(0, 0, 0, 0));
-  }, [event.eventDate]);
+  const queryClient = useQueryClient();
 
-  const canRegister = event.registrationOpen && !isPast;
+  const isPast = useMemo(() => {
+    if (!event || !event.eventDate) return false;
+    return new Date(event.eventDate) < new Date(new Date().setHours(0, 0, 0, 0));
+  }, [event?.eventDate]);
 
   const formattedDate = useMemo(() => {
+    if (!event || !event.eventDate) return 'Date TBD';
     return new Date(event.eventDate).toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     });
-  }, [event.eventDate]);
+  }, [event?.eventDate]);
 
-  const getCategoryClass = (cat: string) => {
+  if (!event || !event.id) {
+    return null;
+  }
+
+  const category = event.category || 'General';
+  const canRegister = Boolean(event.registrationOpen && !isPast);
+
+  const handlePrefetch = () => {
+    if (event?.id) {
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.events.detail(event.id),
+        queryFn: () => eventService.getEventById(event.id),
+        staleTime: 5 * 60 * 1000,
+      });
+    }
+  };
+
+  const getCategoryClass = (cat?: string) => {
+    if (!cat) return 'badge-technical';
     const c = cat.toLowerCase();
     return `badge-${c}`;
   };
 
   return (
-    <div className={`card event-card ${event.featured ? 'featured-border' : ''}`}>
+    <div
+      className={`card event-card ${event.featured ? 'featured-border' : ''}`}
+      onMouseEnter={handlePrefetch}
+      onFocus={handlePrefetch}
+    >
       {/* Card Cover Banner */}
       <div className="card-media-wrapper">
         <img
@@ -41,13 +68,20 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onRegisterClick }) 
           alt={event.title}
           className="card-image"
           loading="lazy"
+          decoding="async"
+          onError={(e) => {
+            const target = e.currentTarget;
+            if (!target.src.includes('photo-1540575467063-178a50c2df87')) {
+              target.src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80';
+            }
+          }}
         />
         <div className="card-media-overlay" />
 
         {/* Top Badges */}
         <div className="card-badges-top">
-          <span className={`badge ${getCategoryClass(event.category)}`}>
-            {event.category}
+          <span className={`badge ${getCategoryClass(category)}`}>
+            {category}
           </span>
           {event.featured && (
             <span className="badge badge-featured">
@@ -76,7 +110,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onRegisterClick }) 
       {/* Card Content */}
       <div className="card-content">
         <h3 className="card-title">
-          <Link to={`/events/${event.id}`}>{event.title}</Link>
+          <Link to={`/events/${event.id}`}>{event.title || 'Untitled Event'}</Link>
         </h3>
 
         <div className="card-meta-list">
@@ -86,11 +120,11 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onRegisterClick }) 
           </div>
           <div className="meta-item">
             <Clock size={15} className="meta-icon" />
-            <span>{event.startTime} - {event.endTime}</span>
+            <span>{event.startTime || '10:00 AM'} - {event.endTime || '04:00 PM'}</span>
           </div>
           <div className="meta-item">
             <MapPin size={15} className="meta-icon" />
-            <span className="meta-venue" title={event.venue}>{event.venue}</span>
+            <span className="meta-venue" title={event.venue || 'Campus Venue'}>{event.venue || 'Campus Venue'}</span>
           </div>
           {event.registrationCount !== undefined && (
             <div className="meta-item">
@@ -146,7 +180,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onRegisterClick }) 
         }
 
         .event-card:hover {
-          transform: translateY(-3px);
+          transform: translateY(-2px);
           box-shadow: var(--shadow-md);
           border-color: var(--gray-300);
         }
@@ -159,6 +193,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onRegisterClick }) 
         .featured-border:hover {
           border-color: #f59e0b;
           box-shadow: 0 8px 20px rgba(245, 158, 11, 0.2);
+          transform: translateY(-2px);
         }
 
         .card-media-wrapper {
@@ -173,11 +208,11 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onRegisterClick }) 
           width: 100%;
           height: 100%;
           object-fit: cover;
-          transition: transform 350ms ease;
+          transition: transform var(--transition-normal);
         }
 
         .event-card:hover .card-image {
-          transform: scale(1.05);
+          transform: scale(1.03);
         }
 
         .card-media-overlay {
